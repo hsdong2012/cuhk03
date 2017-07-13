@@ -93,12 +93,15 @@ def train(model, criterion, optimizer, epoch):
         loss.backward()
         optimizer.step()
         if batch_idx % args.log_interval == 0:
-            print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
+            print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.4f}'.format(
                 epoch, batch_idx * len(inputs), len(train_loader.dataset),
                 100. * batch_idx / len(train_loader), loss.data[0]))
-            print('Top1(accuracy) : {:.3f}\tTop5(accuracy) : {:.3f}'.format(
-                top1.avg, top5.avg))
             print()
+    print('Train batch size: %s' %(args.train_batch_size))
+    print('Top1(train) : {:.3f}%\tTop5(accuracy) : {:.3f}%'.format(
+        top1.avg, top5.avg))
+    print('Train Average Loss: {:.4f}'.format(losses.avg))
+    print()
     return (losses.avg, top1.avg)
 
 def test(model, criterion, epoch):
@@ -123,7 +126,11 @@ def test(model, criterion, epoch):
         losses.update(loss.data[0], inputs.size(0))
         top1.update(prec1[0], inputs.size(0))
         top5.update(prec5[0], inputs.size(0))
-
+    print('Test batch size: %s' %(args.test_batch_size))
+    print('Top1(test) : {:.3f}%\tTop5(test) : {:.3f}%'.format(
+        top1.avg, top5.avg))
+    print('Test Average Loss: {:.4f}'.format(losses.avg))
+    print()
     return (losses.avg, top1.avg)
 
 
@@ -151,44 +158,43 @@ def main():
     if args.cuda:
         criterion = nn.CrossEntropyLoss().cuda()
 
-    # title = 'CUHK03-AlexNet'
-    # logger = Logger(os.path.join(args.checkpoint, 'log.txt'), title=title)
-    # logger.set_names(['Learning Rate', 'Train Loss', 'Valid Loss', 'Train Acc.', 'Valid Acc.'])
+    title = 'CUHK03-AlexNet'
+    logger = Logger(os.path.join(args.checkpoint, 'log.txt'), title=title)
+    logger.set_names(['Learning Rate', 'Train Loss', 'Valid Loss', 'Train Acc.', 'Valid Acc.'])
     # Train and val
     for epoch in range(1, args.epochs + 1):
         lr, optimizer = exp_lr_scheduler(optimizer, epoch)
         print('\nEpoch: [%d | %d] LR: %f' % (epoch, args.epochs, lr))
-
+        print()
         train_loss, train_acc = train(model, criterion, optimizer, epoch)
         test_loss, test_acc = test(model, criterion, epoch)
 
         # append logger file
-        # logger.append([lr, train_loss, test_loss, train_acc, test_acc])
+        logger.append([lr, train_loss, test_loss, train_acc, test_acc])
 
         # save model
         is_best = test_acc > best_acc
         best_acc = max(test_acc, best_acc)
-        # save_checkpoint({
-        #         'epoch': epoch,
-        #         'state_dict': model.state_dict(),
-        #         'acc': test_acc,
-        #         'best_acc': best_acc,
-        #         'optimizer' : optimizer.state_dict(),
-        #     }, is_best, checkpoint=args.checkpoint)
+        save_checkpoint({
+                'epoch': epoch,
+                'state_dict': model.state_dict(),
+                'acc': test_acc,
+                'best_acc': best_acc,
+                'optimizer' : optimizer.state_dict(),
+            }, is_best, checkpoint=args.checkpoint)
 
-    # logger.close()
-    # logger.plot()
-    # savefig(os.path.join(args.checkpoint, 'log.eps'))
+    logger.close()
+    logger.plot()
+    savefig(os.path.join(args.checkpoint, 'log.eps'))
 
-    print('Best acc:')
-    print(best_acc)
+    print('Best test acc: {:.3f}'.format(best_acc))
 
 
 def exp_lr_scheduler(optimizer, epoch, init_lr=args.lr, lr_decay_epoch=10):
     """Decay learning rate by a factor of 0.1 every lr_decay_epoch epochs."""
     lr = init_lr * (0.1**(epoch // lr_decay_epoch))
     if epoch % lr_decay_epoch == 0:
-        print('LR is set to {}'.format(lr))
+        # print('LR is set to {}'.format(lr))
     for param_group in optimizer.param_groups:
         param_group['lr'] = lr
 
