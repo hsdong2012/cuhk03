@@ -136,7 +136,7 @@ def main():
 
     model = models.alexnet(pretrained=True)
     m = model.classifier._modules['6']
-    m = nn.Linear(4096, 843)
+    m = nn.Linear(4096, 1467)
     m.weight.data.normal_(0.0, 0.3)
     import torch.nn.init as init
     init.constant(m.bias, 0.0)

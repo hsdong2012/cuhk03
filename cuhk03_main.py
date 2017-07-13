@@ -114,6 +114,7 @@ init.constant(m.bias, 0.0)
 # m.bias.data.zero_()
 # m.bias.data.fill_(0)
 
+model.features = torch.nn.DataParallel(model.features)
 if args.cuda:
     model.cuda()
 
