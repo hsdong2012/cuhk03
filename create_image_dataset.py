@@ -36,14 +36,14 @@ def create_dataset(file_path):
         tes_index = (f[f['testsets'][0][1]][:].T - 1).tolist()
 
         # just use camera pair 1 (totally 5 pairs)
-        for i in xrange(1):
+        for i in xrange(5):
             for k in xrange(f[f['labeled'][0][i]][0].size):
                 print i,k
                 for j in it.chain(xrange(1, 5), xrange(6, 10)):
                     if len(f[f[f['labeled'][0][i]][j][k]].shape) == 3:
                         img1 = np.array(f[f[f['labeled'][0][i]][j][k]][:]).transpose(2,1,0)
                         img1 = scipy.misc.imresize(img1, (224,224))
-                        file_path = 'train/id'+str(k)+'/'
+                        file_path = 'train/id'+str(k+i*1000)+'/'
                         directory = os.path.dirname(file_path)
                         if not os.path.exists(directory):
                             os.makedirs(directory)
@@ -54,7 +54,7 @@ def create_dataset(file_path):
                     for j in it.chain(xrange(1), xrange(5, 6)):
                         if len(f[f[f['labeled'][0][i]][j][k]].shape) == 3:
                             img1 = np.array(f[f[f['labeled'][0][i]][j][k]][:]).transpose(2,1,0)
-                            file_path = 'val/id'+str(k)+'/'
+                            file_path = 'val/id'+str(k+i*1000)+'/'
                             directory = os.path.dirname(file_path)
                             if not os.path.exists(directory):
                                 os.makedirs(directory)

@@ -84,7 +84,7 @@ def _get_data(val_or_test, group):
         data = image_set.transpose(0, 3, 1, 2)
         features = torch.from_numpy(data)
         transform = transforms.Normalize(mean=[0.367, 0.362, 0.357], std=[0.244, 0.247, 0.249])
-        for j in range(num_sample_total):
+        for j in range(num_sample):
             features[j] = transform(features[j])
         targets = torch.from_numpy(image_id)
         return features, targets
@@ -92,19 +92,19 @@ def _get_data(val_or_test, group):
 
 # model = AlexNet()
 
-# model = models.alexnet(pretrained=True)
-# m = model.classifier._modules['6']
-# m = nn.Linear(4096, 843)
-# m.weight.data.normal_(0.0, 0.3)
-# import torch.nn.init as init
-# init.constant(m.bias, 0.0)
-
-model = models.vgg11(pretrained=True)
-# model.fc = nn.Linear(4096, 843)
+model = models.alexnet(pretrained=True)
 m = model.classifier._modules['6']
 m = nn.Linear(4096, 843)
 m.weight.data.normal_(0.0, 0.3)
-m.bias.data.zero_()
+import torch.nn.init as init
+init.constant(m.bias, 0.0)
+
+# model = models.vgg11(pretrained=True)
+# # model.fc = nn.Linear(4096, 843)
+# m = model.classifier._modules['6']
+# m = nn.Linear(4096, 843)
+# m.weight.data.normal_(0.0, 0.3)
+# m.bias.data.zero_()
 
 # model = models.resnet18(pretrained=True)
 # m = list(model.children())[-1]

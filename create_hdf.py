@@ -66,10 +66,10 @@ def create_dataset(file_path):
         b_count_v_id = 0
         b_count_e_id = 0
         # just use camera pair 1 (totally 5 pairs)
-        for i in xrange(1):
+        for i in xrange(5):
             for k in xrange(f[f['labeled'][0][i]][0].size):
                 print i,k
-                a_temp_t_id.append(k)
+                a_temp_t_id.append(k+i*1000)
                 for j in it.chain(xrange(1, 5), xrange(6, 10)):
                     if len(f[f[f['labeled'][0][i]][j][k]].shape) == 3:
                         temp.append(np.array((Image.fromarray(f[f[f['labeled'][0][i]][j][k]][:].transpose(2,1,0))).resize((224,224))) / 255.)
@@ -118,6 +118,16 @@ def create_dataset(file_path):
             fwae_id.create_dataset(str(a_count_e_id),data = np.array(a_temp_e_id))
             fwbv_id.create_dataset(str(b_count_v_id),data = np.array(b_temp_v_id))
             fwbe_id.create_dataset(str(b_count_e_id),data = np.array(b_temp_e_id))
+            a_count_t_id += 1
+            a_count_v_id += 1
+            a_count_e_id += 1
+            b_count_v_id += 1
+            b_count_e_id += 1
+            a_temp_t_id = []
+            a_temp_v_id = []
+            a_temp_e_id = []
+            b_temp_v_id = []
+            b_temp_e_id = []
 
 
 if __name__ == '__main__':
