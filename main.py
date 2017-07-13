@@ -18,7 +18,7 @@ from torchvision import datasets, transforms
 from torchvision import models
 import torch.utils.data as data_utils
 from cuhk03_alexnet import AlexNet
-from utils import Bar, Logger, AverageMeter, accuracy, mkdir_p, savefig
+from utils import Logger, AverageMeter, accuracy, mkdir_p, savefig
 
 # Training settings
 parser = argparse.ArgumentParser(description='PyTorch CUHK03 Example')
@@ -62,31 +62,26 @@ train_loader = torch.utils.data.DataLoader(
     batch_size=args.train_batch_size, shuffle=True, **kwargs)
 
 val_loader = torch.utils.data.DataLoader(
-    datasets.ImageFolder(valdir, transforms.Compose([
-        transforms.ToTensor(),
-        normalize,
-    ])),
-    batch_size=args.test_batch, shuffle=False, num_workers=args.workers, pin_memory=True)
+    datasets.ImageFolder(valdir, transform=transforms.Compose([
+                        transforms.ToTensor(),
+                        normalize,
+                    ])),
+    batch_size=args.test_batch_size, shuffle=False, **kwargs)
 
 
-def train(model, criterion, optimizer, lr_scheduler, epoch):
+def train(model, criterion, optimizer, epoch):
     model.train()
-    batch_time = AverageMeter()
-    data_time = AverageMeter()
     losses = AverageMeter()
     top1 = AverageMeter()
     top5 = AverageMeter()
-    end = time.time()
 
     for batch_idx, (inputs, targets) in enumerate(train_loader):
-        # measure data loading time
-        data_time.update(time.time() - end)
         if args.cuda:
             inputs, targets = inputs.cuda(), targets.cuda()
         inputs, targets = Variable(inputs), Variable(targets)
         optimizer.zero_grad()
         # compute output
-        outputs = model(data)
+        outputs = model(inputs)
         loss = criterion(outputs, targets)
         # measure accuracy and record loss
         prec1, prec5 = accuracy(outputs.data, targets.data, topk=(1, 5))
@@ -101,15 +96,14 @@ def train(model, criterion, optimizer, lr_scheduler, epoch):
             print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
                 epoch, batch_idx * len(inputs), len(train_loader.dataset),
                 100. * batch_idx / len(train_loader), loss.data[0]))
-            print('Top1 error rate: {:.3f}\tTop5 error rate: {:.3f}'.format(
+            print('Top1(accuracy) : {:.3f}\tTop5(accuracy) : {:.3f}'.format(
                 top1.avg, top5.avg))
+            print()
     return (losses.avg, top1.avg)
 
 def test(model, criterion, epoch):
     global best_acc
 
-    batch_time = AverageMeter()
-    data_time = AverageMeter()
     losses = AverageMeter()
     top1 = AverageMeter()
     top5 = AverageMeter()
@@ -118,7 +112,7 @@ def test(model, criterion, epoch):
     model.eval()
     for batch_idx, (inputs, targets) in enumerate(val_loader):
 
-        if use_cuda:
+        if args.cuda:
             inputs, targets = inputs.cuda(), targets.cuda()
         inputs, targets = Variable(inputs), Variable(targets)
         # compute output
@@ -153,10 +147,13 @@ def main():
     cudnn.benchmark = True
 
     optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum)
-    criterion = nn.CrossEntropyLoss().cuda()
+    criterion = nn.CrossEntropyLoss()
+    if args.cuda:
+        criterion = nn.CrossEntropyLoss().cuda()
 
-    logger = Logger(os.path.join(args.checkpoint, 'log.txt'), title=title)
-    logger.set_names(['Learning Rate', 'Train Loss', 'Valid Loss', 'Train Acc.', 'Valid Acc.'])
+    # title = 'CUHK03-AlexNet'
+    # logger = Logger(os.path.join(args.checkpoint, 'log.txt'), title=title)
+    # logger.set_names(['Learning Rate', 'Train Loss', 'Valid Loss', 'Train Acc.', 'Valid Acc.'])
     # Train and val
     for epoch in range(1, args.epochs + 1):
         lr, optimizer = exp_lr_scheduler(optimizer, epoch)
@@ -166,22 +163,22 @@ def main():
         test_loss, test_acc = test(model, criterion, epoch)
 
         # append logger file
-        logger.append(lr, train_loss, test_loss, train_acc, test_acc])
+        # logger.append([lr, train_loss, test_loss, train_acc, test_acc])
 
         # save model
         is_best = test_acc > best_acc
         best_acc = max(test_acc, best_acc)
-        save_checkpoint({
-                'epoch': epoch,
-                'state_dict': model.state_dict(),
-                'acc': test_acc,
-                'best_acc': best_acc,
-                'optimizer' : optimizer.state_dict(),
-            }, is_best, checkpoint=args.checkpoint)
+        # save_checkpoint({
+        #         'epoch': epoch,
+        #         'state_dict': model.state_dict(),
+        #         'acc': test_acc,
+        #         'best_acc': best_acc,
+        #         'optimizer' : optimizer.state_dict(),
+        #     }, is_best, checkpoint=args.checkpoint)
 
-    logger.close()
-    logger.plot()
-    savefig(os.path.join(args.checkpoint, 'log.eps'))
+    # logger.close()
+    # logger.plot()
+    # savefig(os.path.join(args.checkpoint, 'log.eps'))
 
     print('Best acc:')
     print(best_acc)

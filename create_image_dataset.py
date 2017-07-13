@@ -54,6 +54,7 @@ def create_dataset(file_path):
                     for j in it.chain(xrange(1), xrange(5, 6)):
                         if len(f[f[f['labeled'][0][i]][j][k]].shape) == 3:
                             img1 = np.array(f[f[f['labeled'][0][i]][j][k]][:]).transpose(2,1,0)
+                            img1 = scipy.misc.imresize(img1, (224,224))
                             file_path = 'val/id'+str(k+i*1000)+'/'
                             directory = os.path.dirname(file_path)
                             if not os.path.exists(directory):
@@ -65,6 +66,7 @@ def create_dataset(file_path):
                     for j in it.chain(xrange(1), xrange(5, 6)):
                         if len(f[f[f['labeled'][0][i]][j][k]].shape) == 3:
                             img1 = np.array(f[f[f['labeled'][0][i]][j][k]][:]).transpose(2,1,0)
+                            img1 = scipy.misc.imresize(img1, (224,224))
                             file_path = 'test/id'+str(k)+'/'
                             directory = os.path.dirname(file_path)
                             if not os.path.exists(directory):
