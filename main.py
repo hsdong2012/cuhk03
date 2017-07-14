@@ -3,6 +3,7 @@ import argparse
 import os
 import h5py
 import sys
+import time
 import argparse
 import shutil
 import random
@@ -32,6 +33,8 @@ parser.add_argument('--lr', type=float, default=0.005, metavar='LR',
                     help='learning rate (default: 0.005)')
 parser.add_argument('--momentum', type=float, default=0.5, metavar='M',
                     help='SGD momentum (default: 0.5)')
+parser.add_argument('--weight-decay', '--wd', default=1e-4, type=float,
+                    metavar='W', help='weight decay (default: 1e-4)')
 parser.add_argument('--no-cuda', action='store_true', default=False,
                     help='disables CUDA training')
 parser.add_argument('--seed', type=int, default=1, metavar='S',
@@ -71,10 +74,12 @@ val_loader = torch.utils.data.DataLoader(
 
 def train(model, criterion, optimizer, epoch):
     model.train()
+    batch_time = AverageMeter()
+    data_time = AverageMeter()
     losses = AverageMeter()
     top1 = AverageMeter()
     top5 = AverageMeter()
-
+    end = time.time()
     for batch_idx, (inputs, targets) in enumerate(train_loader):
         if args.cuda:
             inputs, targets = inputs.cuda(), targets.cuda()
@@ -97,8 +102,21 @@ def train(model, criterion, optimizer, epoch):
                 epoch, batch_idx * len(inputs), len(train_loader.dataset),
                 100. * batch_idx / len(train_loader), loss.data[0]))
             print()
+        # measure elapsed time
+        batch_time.update(time.time() - end)
+        end = time.time()
+        if batch_idx % args.log_interval == 0:
+            print('Epoch: [{0}][{1}/{2}]\t'
+                  'Time {batch_time.val:.3f} ({batch_time.avg:.3f})\t'
+                  'Data {data_time.val:.3f} ({data_time.avg:.3f})\t'
+                  'Loss {loss.val:.4f} ({loss.avg:.4f})\t'
+                  'Prec@1 {top1.val:.3f} ({top1.avg:.3f})\t'
+                  'Prec@5 {top5.val:.3f} ({top5.avg:.3f})'.format(
+                   epoch, batch_idx, len(train_loader), batch_time=batch_time,
+                   data_time=data_time, loss=losses, top1=top1, top5=top5))
+            print()
     print('Train batch size: %s' %(args.train_batch_size))
-    print('Top1(train) : {:.3f}%\tTop5(accuracy) : {:.3f}%'.format(
+    print('Top1(train) : {:.3f}%\tTop5(train) : {:.3f}%'.format(
         top1.avg, top5.avg))
     print('Train Average Loss: {:.4f}'.format(losses.avg))
     print()
@@ -106,15 +124,15 @@ def train(model, criterion, optimizer, epoch):
 
 def test(model, criterion, epoch):
     global best_acc
-
+    batch_time = AverageMeter()
     losses = AverageMeter()
     top1 = AverageMeter()
     top5 = AverageMeter()
 
     # switch to evaluate mode
     model.eval()
+    end = time.time()
     for batch_idx, (inputs, targets) in enumerate(val_loader):
-
         if args.cuda:
             inputs, targets = inputs.cuda(), targets.cuda()
         inputs, targets = Variable(inputs), Variable(targets)
@@ -126,6 +144,18 @@ def test(model, criterion, epoch):
         losses.update(loss.data[0], inputs.size(0))
         top1.update(prec1[0], inputs.size(0))
         top5.update(prec5[0], inputs.size(0))
+        # measure elapsed time
+        batch_time.update(time.time() - end)
+        end = time.time()
+        if batch_idx % args.log_interval == 0:
+            print('Test: [{0}/{1}]\t'
+                  'Time {batch_time.val:.3f} ({batch_time.avg:.3f})\t'
+                  'Loss {loss.val:.4f} ({loss.avg:.4f})\t'
+                  'Prec@1 {top1.val:.3f} ({top1.avg:.3f})\t'
+                  'Prec@5 {top5.val:.3f} ({top5.avg:.3f})'.format(
+                   batch_idx, len(val_loader), batch_time=batch_time, loss=losses,
+                   top1=top1, top5=top5))
+            print()
     print('Test batch size: %s' %(args.test_batch_size))
     print('Top1(test) : {:.3f}%\tTop5(test) : {:.3f}%'.format(
         top1.avg, top5.avg))
@@ -154,14 +184,14 @@ def main():
         model.cuda()
     cudnn.benchmark = True
 
-    optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum)
+    optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum, weight_decay=args.weight_decay)
     criterion = nn.CrossEntropyLoss()
     if args.cuda:
         criterion = nn.CrossEntropyLoss().cuda()
 
     title = 'CUHK03-AlexNet'
     logger = Logger(os.path.join(args.checkpoint, 'log.txt'), title=title)
-    logger.set_names(['Learning Rate', 'Train Loss', 'Valid Loss', 'Train Acc.', 'Valid Acc.', 'Train Top5', 'Valid Top5')
+    logger.set_names(['Learning Rate', 'Train Loss', 'Valid Loss', 'Train Acc.', 'Valid Acc.', 'Train Top5', 'Valid Top5'])
     # Train and val
     for epoch in range(1, args.epochs + 1):
         lr, optimizer = exp_lr_scheduler(optimizer, epoch)
