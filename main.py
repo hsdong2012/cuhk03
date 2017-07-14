@@ -102,7 +102,7 @@ def train(model, criterion, optimizer, epoch):
         top1.avg, top5.avg))
     print('Train Average Loss: {:.4f}'.format(losses.avg))
     print()
-    return (losses.avg, top1.avg)
+    return (losses.avg, top1.avg, top5.avg)
 
 def test(model, criterion, epoch):
     global best_acc
@@ -131,7 +131,7 @@ def test(model, criterion, epoch):
         top1.avg, top5.avg))
     print('Test Average Loss: {:.4f}'.format(losses.avg))
     print()
-    return (losses.avg, top1.avg)
+    return (losses.avg, top1.avg, top5.avg)
 
 
 best_acc = 0  # best test accuracy
@@ -143,7 +143,8 @@ def main():
 
     model = models.alexnet(pretrained=True)
     m = model.classifier._modules['6']
-    m = nn.Linear(4096, 1467)
+    # m = nn.Linear(4096, 1467)
+    m = nn.Linear(4096, 843)
     m.weight.data.normal_(0.0, 0.3)
     import torch.nn.init as init
     init.constant(m.bias, 0.0)
@@ -160,32 +161,32 @@ def main():
 
     title = 'CUHK03-AlexNet'
     logger = Logger(os.path.join(args.checkpoint, 'log.txt'), title=title)
-    logger.set_names(['Learning Rate', 'Train Loss', 'Valid Loss', 'Train Acc.', 'Valid Acc.'])
+    logger.set_names(['Learning Rate', 'Train Loss', 'Valid Loss', 'Train Acc.', 'Valid Acc.', 'Train Top5', 'Valid Top5')
     # Train and val
     for epoch in range(1, args.epochs + 1):
         lr, optimizer = exp_lr_scheduler(optimizer, epoch)
         print('\nEpoch: [%d | %d] LR: %f' % (epoch, args.epochs, lr))
         print()
-        train_loss, train_acc = train(model, criterion, optimizer, epoch)
-        test_loss, test_acc = test(model, criterion, epoch)
+        train_loss, train_acc, train_top5 = train(model, criterion, optimizer, epoch)
+        test_loss, test_acc, test_top5 = test(model, criterion, epoch)
 
         # append logger file
-        logger.append([lr, train_loss, test_loss, train_acc, test_acc])
+        logger.append([lr, train_loss, test_loss, train_acc, test_acc, train_top5, test_top5])
 
         # save model
         is_best = test_acc > best_acc
         best_acc = max(test_acc, best_acc)
-        save_checkpoint({
-                'epoch': epoch,
-                'state_dict': model.state_dict(),
-                'acc': test_acc,
-                'best_acc': best_acc,
-                'optimizer' : optimizer.state_dict(),
-            }, is_best, checkpoint=args.checkpoint)
+        # save_checkpoint({
+        #         'epoch': epoch,
+        #         'state_dict': model.state_dict(),
+        #         'acc': test_acc,
+        #         'best_acc': best_acc,
+        #         'optimizer' : optimizer.state_dict(),
+        #     }, is_best, checkpoint=args.checkpoint)
 
     logger.close()
-    logger.plot()
-    savefig(os.path.join(args.checkpoint, 'log.eps'))
+    # logger.plot()
+    # savefig(os.path.join(args.checkpoint, 'log.eps'))
 
     print('Best test acc: {:.3f}'.format(best_acc))
 
@@ -193,7 +194,7 @@ def main():
 def exp_lr_scheduler(optimizer, epoch, init_lr=args.lr, lr_decay_epoch=10):
     """Decay learning rate by a factor of 0.1 every lr_decay_epoch epochs."""
     lr = init_lr * (0.1**(epoch // lr_decay_epoch))
-    if epoch % lr_decay_epoch == 0:
+    # if epoch % lr_decay_epoch == 0:
         # print('LR is set to {}'.format(lr))
     for param_group in optimizer.param_groups:
         param_group['lr'] = lr
