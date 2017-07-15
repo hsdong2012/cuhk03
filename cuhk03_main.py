@@ -217,40 +217,34 @@ def main():
 
     model_name = ''
     pretrain = ''
+    classes_num = [843, 1467, 624]
     if 0:
         model = models.vgg11(pretrained=True)
-        pretrain = '1'
-        # model.fc = nn.Linear(4096, 843)
-        m = model.classifier._modules['6']
-        m = nn.Linear(4096, 843)
-        m.weight.data.normal_(0.0, 0.3)
-        m.bias.data.zero_()
+        model.classifier._modules['6'] = nn.Linear(4096, classes_num[0])
+        model.classifier._modules['6'].weight.data.normal_(0.0, 0.3)
+        model.classifier._modules['6'].bias.data.zero_()
         model.features = torch.nn.DataParallel(model.features)
+        pretrain = '1'
         model_name = 'vgg11'
 
     if 0:
         model = models.resnet18(pretrained=True)
-        pretrain = '1'
-        m = list(model.children())[-1]
         num_ftrs = model.fc.in_features
-        m = nn.Linear(num_ftrs, 843)
-        m.weight.data.normal_(0.0, 0.3)
-        m.bias.data.zero_()
-        # m.bias.data.fill_(0)
+        model.fc = nn.Linear(num_ftrs, classes_num[0])
+        model.fc.weight.data.normal_(0.0, 0.3)
+        model.fc.bias.data.fill_(0)
         model = torch.nn.DataParallel(model)
+        pretrain = '1'
         model_name = 'resnet18'
 
     if 1:
         model = models.alexnet(pretrained=True)
-        pretrain = '1'
-        m = model.classifier._modules['6']
-        # m = nn.Linear(4096, 624)
-        # m = nn.Linear(4096, 1467)
-        m = nn.Linear(4096, 843)
-        m.weight.data.normal_(0.0, 0.3)
+        model.classifier._modules['6'] = nn.Linear(4096, classes_num[0])
+        model.classifier._modules['6'].weight.data.normal_(0.0, 0.3)
         import torch.nn.init as init
-        init.constant(m.bias, 0.0)
+        init.constant(model.classifier._modules['6'].bias, 0.0)
         model.features = torch.nn.DataParallel(model.features)
+        pretrain = '1'
         model_name = 'alexnet'
 
     if args.cuda:
