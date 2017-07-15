@@ -4,6 +4,7 @@ import os
 import h5py
 import sys
 import time
+import datetime
 import argparse
 import shutil
 import random
@@ -169,33 +170,43 @@ def main():
         mkdir_p(args.checkpoint)
 
 
-    
-    # model = models.vgg11(pretrained=True)
-    # model.fc = nn.Linear(4096, 843)
-    # m = model.classifier._modules['6']
-    # m = nn.Linear(4096, 843)
-    # m.weight.data.normal_(0.0, 0.3)
-    # m.bias.data.zero_()
-    # model.features = torch.nn.DataParallel(model.features)
+    model_name = ''
+    pretrain = ''
+    if 0:
+        model = models.vgg11(pretrained=True)
+	pretrain = '1'
+        # model.fc = nn.Linear(4096, 843)
+        m = model.classifier._modules['6']
+        m = nn.Linear(4096, 843)
+        m.weight.data.normal_(0.0, 0.3)
+        m.bias.data.zero_()
+        model.features = torch.nn.DataParallel(model.features)
+	model_name = 'vgg11'
 
-    # model = models.resnet18(pretrained=True)
-    # m = list(model.children())[-1]
-    # num_ftrs = model.fc.in_features
-    # m = nn.Linear(num_ftrs, 843)
-    # m.weight.data.normal_(0.0, 0.3)
-    # m.bias.data.zero_()
-    # m.bias.data.fill_(0)
-    # model = torch.nn.DataParallel(model)
+    if 0:
+        model = models.resnet18(pretrained=True)
+	pretrain = '1'
+        m = list(model.children())[-1]
+        num_ftrs = model.fc.in_features
+        m = nn.Linear(num_ftrs, 843)
+        m.weight.data.normal_(0.0, 0.3)
+        m.bias.data.zero_()
+        # m.bias.data.fill_(0)
+        model = torch.nn.DataParallel(model)
+	model_name = 'resnet18'
 
-    model = models.alexnet(pretrained=True)
-    m = model.classifier._modules['6']
-    # m = nn.Linear(4096, 624)
-    # m = nn.Linear(4096, 1467)
-    m = nn.Linear(4096, 843)
-    m.weight.data.normal_(0.0, 0.3)
-    import torch.nn.init as init
-    init.constant(m.bias, 0.0)
-    model.features = torch.nn.DataParallel(model.features)
+    if 1:
+        model = models.alexnet(pretrained=False)
+	pretrain = '0'
+        m = model.classifier._modules['6']
+        # m = nn.Linear(4096, 624)
+        # m = nn.Linear(4096, 1467)
+        m = nn.Linear(4096, 843)
+        m.weight.data.normal_(0.0, 0.3)
+        import torch.nn.init as init
+        init.constant(m.bias, 0.0)
+        model.features = torch.nn.DataParallel(model.features)
+	model_name = 'alexnet'
 
     if args.cuda:
         model.cuda()
@@ -207,7 +218,14 @@ def main():
         criterion = nn.CrossEntropyLoss().cuda()
 
     title = 'CUHK03-AlexNet'
-    logger = Logger(os.path.join(args.checkpoint, 'log.txt'), title=title)
+    now_datetime = str(datetime.datetime.now())
+    array0 = now_datetime.split(' ')
+    yymmdd = array0[0]
+    time_array = array0[1].split(':')
+    hour_min = time_array[0]+time_array[1]
+    log_filename = 'log-'+model_name+'-'+pretrain+'-'+yymmdd+'-'+hour_min+'.txt'
+    logger = Logger(os.path.join(args.checkpoint, log_filename), title=title)
+    # logger = Logger(os.path.join(args.checkpoint, 'log.txt'), title=title)
     logger.set_names(['Learning Rate', 'Train Loss', 'Valid Loss', 'Train Acc.', 'Valid Acc.', 'Train Top5', 'Valid Top5'])
     # Train and val
     for epoch in range(1, args.epochs + 1):
