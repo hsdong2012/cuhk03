@@ -2,19 +2,23 @@ from __future__ import print_function
 import argparse
 import h5py
 import sys
-import argparse
+import time
+import datetime
+import shutil
 import numpy as np
 import torch
 from torchvision import datasets, transforms
 from torchvision import models
 import torch.utils.data as data_utils
-from cuhk03_alexnet import AlexNet
 
 import torch.nn as nn
+import torch.nn.parallel
 import torch.nn.functional as F
+import torch.backends.cudnn as cudnn
 import torch.optim as optim
 from torch.autograd import Variable
-
+from cuhk03_alexnet import AlexNet
+from utils import Logger, AverageMeter, accuracy, mkdir_p, savefig
 
 # Training settings
 parser = argparse.ArgumentParser(description='PyTorch CUHK03 Example')
@@ -22,18 +26,23 @@ parser.add_argument('--train-batch-size', type=int, default=20, metavar='N',
                     help='input batch size for training (default: 20)')
 parser.add_argument('--test-batch-size', type=int, default=10, metavar='N',
                     help='input batch size for testing (default: 10)')
-parser.add_argument('--epochs', type=int, default=30, metavar='N',
-                    help='number of epochs to train (default: 30)')
-parser.add_argument('--lr', type=float, default=0.005, metavar='LR',
-                    help='learning rate (default: 1e-6)')
+parser.add_argument('--epochs', type=int, default=60, metavar='N',
+                    help='number of epochs to train (default: 60)')
+parser.add_argument('--lr', type=float, default=0.01, metavar='LR',
+                    help='learning rate (default: 0.01)')
 parser.add_argument('--momentum', type=float, default=0.005, metavar='M',
                     help='SGD momentum (default: 0.5)')
+parser.add_argument('--weight-decay', '--wd', default=1e-4, type=float,
+                    metavar='W', help='weight decay (default: 1e-4)')
 parser.add_argument('--no-cuda', action='store_true', default=False,
                     help='disables CUDA training')
 parser.add_argument('--seed', type=int, default=1, metavar='S',
                     help='random seed (default: 1)')
 parser.add_argument('--log-interval', type=int, default=10, metavar='N',
                     help='how many batches to wait before logging training status')
+# Checkpoints
+parser.add_argument('-c', '--checkpoint', default='cuhk03_checkpoint', type=str, metavar='PATH',
+                    help='path to save checkpoint (default: cuhk03_checkpoint)')
 
 args = parser.parse_args()
 args.cuda = not args.no_cuda and torch.cuda.is_available()
@@ -73,7 +82,7 @@ def _get_train_data(train, group):
 
         targets = torch.from_numpy(image_id)
 
-        return features, targets, data_mean, data_std
+        return features, targets
 
 
 def _get_data(val_or_test, group):
@@ -90,91 +99,222 @@ def _get_data(val_or_test, group):
         return features, targets
 
 
-# model = AlexNet()
 
-model = models.alexnet(pretrained=True)
-m = model.classifier._modules['6']
-m = nn.Linear(4096, 843)
-m.weight.data.normal_(0.0, 0.3)
-import torch.nn.init as init
-init.constant(m.bias, 0.0)
-
-# model = models.vgg11(pretrained=True)
-# # model.fc = nn.Linear(4096, 843)
-# m = model.classifier._modules['6']
-# m = nn.Linear(4096, 843)
-# m.weight.data.normal_(0.0, 0.3)
-# m.bias.data.zero_()
-
-# model = models.resnet18(pretrained=True)
-# m = list(model.children())[-1]
-# num_ftrs = model.fc.in_features
-# m = nn.Linear(num_ftrs, 843)
-# m.weight.data.normal_(0.0, 0.3)
-# m.bias.data.zero_()
-# m.bias.data.fill_(0)
-
-model.features = torch.nn.DataParallel(model.features)
-if args.cuda:
-    model.cuda()
-
-optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum)
-
-train_features, train_targets, mean, std = _get_train_data('train', 'a')
+train_features, train_targets = _get_train_data('train', 'a')
 print('train data size', train_features.size())
 print('train target size', train_targets.size())
 train = data_utils.TensorDataset(train_features, train_targets)
 train_loader = data_utils.DataLoader(train, batch_size=args.train_batch_size, shuffle=True)
 
-test_features, test_targets = _get_data('test', 'b')
-print('test data size', test_features.size())
-print('test target size', test_targets.size())
-test = data_utils.TensorDataset(test_features, test_targets)
-test_loader = data_utils.DataLoader(test, batch_size=args.test_batch_size, shuffle=True)
+val_features, val_targets = _get_data('test', 'b')
+print('val data size', val_features.size())
+print('val target size', val_targets.size())
+val = data_utils.TensorDataset(val_features, val_targets)
+val_loader = data_utils.DataLoader(val, batch_size=args.test_batch_size, shuffle=True)
 
 
-def train(epoch):
+def train(model, criterion, optimizer, epoch):
     model.train()
-    for batch_idx, (data, target) in enumerate(train_loader):
+    batch_time = AverageMeter()
+    data_time = AverageMeter()
+    losses = AverageMeter()
+    top1 = AverageMeter()
+    top5 = AverageMeter()
+    end = time.time()
+    for batch_idx, (inputs, targets) in enumerate(train_loader):
+        inputs = inputs.float()  # with size of (batch_size * 3 * 224 * 224)
+        targets = targets.long() # with size of (batch_size)
         if args.cuda:
-            data, target = data.cuda(), target.cuda()
-        data, target = Variable(data), Variable(target)
-        data = data.float()  # with size of (batch_size * 3 * 224 * 224)
-        target = target.long() # with size of (batch_size)
-
+            inputs, targets = inputs.cuda(), targets.cuda()
+        inputs, targets = Variable(inputs), Variable(targets)
         optimizer.zero_grad()
-        output = model(data)
-        loss = F.cross_entropy(output, target)
+        # compute output
+        outputs = model(inputs)
+        loss = criterion(outputs, targets)
+        # measure accuracy and record loss
+        prec1, prec5 = accuracy(outputs.data, targets.data, topk=(1, 5))
+        losses.update(loss.data[0], inputs.size(0))
+        top1.update(prec1[0], inputs.size(0))
+        top5.update(prec5[0], inputs.size(0))
+        # compute gradient and do SGD step
+        optimizer.zero_grad()
         loss.backward()
         optimizer.step()
         if batch_idx % args.log_interval == 0:
-            print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
-                epoch, batch_idx * len(data), len(train_loader.dataset),
+            print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.4f}'.format(
+                epoch, batch_idx * len(inputs), len(train_loader.dataset),
                 100. * batch_idx / len(train_loader), loss.data[0]))
+            print()
+        # measure elapsed time
+        batch_time.update(time.time() - end)
+        end = time.time()
+        if batch_idx % args.log_interval == 0:
+            print('Epoch: [{0}][{1}/{2}]\t'
+                  'Loss {loss.val:.4f}({loss.avg:.4f})\t'
+                  'Prec@1 {top1.val:.3f}({top1.avg:.3f})\t'
+                  'Prec@5 {top5.val:.3f}({top5.avg:.3f})'.format(
+                   epoch, batch_idx, len(train_loader), loss=losses,
+                   top1=top1, top5=top5))
+            print()
+    print('Train batch size: %s' %(args.train_batch_size))
+    print('Top1(train) : {:.3f}%\t''Top5(train) : {:.3f}%'.format(
+        top1.avg, top5.avg))
+    print('Train Average Loss: {:.4f}'.format(losses.avg))
+    print()
+    return (losses.avg, top1.avg, top5.avg)
 
-def test(epoch):
+def test(model, criterion, epoch):
+    global best_acc
+    batch_time = AverageMeter()
+    losses = AverageMeter()
+    top1 = AverageMeter()
+    top5 = AverageMeter()
+
+    # switch to evaluate mode
     model.eval()
-    test_loss = 0
-    correct = 0
-    for data, target in test_loader:
+    end = time.time()
+    for batch_idx, (inputs, targets) in enumerate(val_loader):
+        inputs = inputs.float()  # with size of (batch_size * 3 * 224 * 224)
+        targets = targets.long() # with size of (batch_size)
         if args.cuda:
-            data, target = data.cuda(), target.cuda()
-        data, target = Variable(data, volatile=True), Variable(target)
-        data = data.float()
-        target = target.long()
+            inputs, targets = inputs.cuda(), targets.cuda()
+        inputs, targets = Variable(inputs), Variable(targets)
+        # compute output
+        outputs = model(inputs)
+        loss = criterion(outputs, targets)
+        # measure accuracy and record loss
+        prec1, prec5 = accuracy(outputs.data, targets.data, topk=(1, 5))
+        losses.update(loss.data[0], inputs.size(0))
+        top1.update(prec1[0], inputs.size(0))
+        top5.update(prec5[0], inputs.size(0))
+        # measure elapsed time
+        batch_time.update(time.time() - end)
+        end = time.time()
+        if batch_idx % args.log_interval == 0:
+            print('Test: [{0}/{1}]\t'
+                  'Loss {loss.val:.4f} ({loss.avg:.4f})\t'
+                  'Prec@1 {top1.val:.3f} ({top1.avg:.3f})\t'
+                  'Prec@5 {top5.val:.3f} ({top5.avg:.3f})'.format(
+                   batch_idx, len(val_loader), loss=losses,
+                   top1=top1, top5=top5))
+            print()
+    print('Test batch size: %s' %(args.test_batch_size))
+    print('Top1(test) : {:.3f}%\tTop5(test) : {:.3f}%'.format(
+        top1.avg, top5.avg))
+    print('Test Average Loss: {:.4f}'.format(losses.avg))
+    print()
+    return (losses.avg, top1.avg, top5.avg)
 
-        output = model(data)
-        test_loss += F.cross_entropy(output, target).data[0]
-        pred = output.data.max(1)[1] # get the index of the max log-probability
-        correct += pred.eq(target.data).cpu().sum()
 
-    test_loss = test_loss
-    test_loss /= len(test_loader) # loss function already averages over batch size
-    print('\nTest set: Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)\n'.format(
-        test_loss, correct, len(test_loader.dataset),
-        100. * correct / len(test_loader.dataset)))
+best_acc = 0  # best test accuracy
+
+def main():
+    global best_acc
+    if not os.path.isdir(args.checkpoint):
+        mkdir_p(args.checkpoint)
 
 
-for epoch in range(1, args.epochs + 1):
-    train(epoch)
-    test(epoch)
+    model_name = ''
+    pretrain = ''
+    if 0:
+        model = models.vgg11(pretrained=True)
+	    pretrain = '1'
+        # model.fc = nn.Linear(4096, 843)
+        m = model.classifier._modules['6']
+        m = nn.Linear(4096, 843)
+        m.weight.data.normal_(0.0, 0.3)
+        m.bias.data.zero_()
+        model.features = torch.nn.DataParallel(model.features)
+        model_name = 'vgg11'
+
+    if 0:
+        model = models.resnet18(pretrained=True)
+        pretrain = '1'
+        m = list(model.children())[-1]
+        num_ftrs = model.fc.in_features
+        m = nn.Linear(num_ftrs, 843)
+        m.weight.data.normal_(0.0, 0.3)
+        m.bias.data.zero_()
+        # m.bias.data.fill_(0)
+        model = torch.nn.DataParallel(model)
+        model_name = 'resnet18'
+
+    if 1:
+        model = models.alexnet(pretrained=True)
+        pretrain = '1'
+        m = model.classifier._modules['6']
+        # m = nn.Linear(4096, 624)
+        # m = nn.Linear(4096, 1467)
+        m = nn.Linear(4096, 843)
+        m.weight.data.normal_(0.0, 0.3)
+        import torch.nn.init as init
+        init.constant(m.bias, 0.0)
+        model.features = torch.nn.DataParallel(model.features)
+        model_name = 'alexnet'
+
+    if args.cuda:
+        model.cuda()
+    cudnn.benchmark = True
+
+    optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum, weight_decay=args.weight_decay)
+    criterion = nn.CrossEntropyLoss()
+    if args.cuda:
+        criterion = nn.CrossEntropyLoss().cuda()
+
+    title = 'CUHK03-AlexNet'
+    now_datetime = str(datetime.datetime.now())
+    array0 = now_datetime.split(' ')
+    yymmdd = array0[0]
+    time_array = array0[1].split(':')
+    hour_min = time_array[0]+time_array[1]
+    log_filename = 'log-'+model_name+'-'+pretrain+'-'+yymmdd+'-'+hour_min+'.txt'
+    logger = Logger(os.path.join(args.checkpoint, log_filename), title=title)
+    # logger = Logger(os.path.join(args.checkpoint, 'log.txt'), title=title)
+    logger.set_names(['Learning Rate', 'Train Loss', 'Valid Loss', 'Train Acc.', 'Valid Acc.', 'Train Top5', 'Valid Top5'])
+    # Train and val
+    for epoch in range(1, args.epochs + 1):
+        lr, optimizer = exp_lr_scheduler(optimizer, epoch)
+        print('\nEpoch: [%d | %d] LR: %f' % (epoch, args.epochs, lr))
+        print()
+        train_loss, train_acc, train_top5 = train(model, criterion, optimizer, epoch)
+        test_loss, test_acc, test_top5 = test(model, criterion, epoch)
+
+        # append logger file
+        logger.append([lr, train_loss, test_loss, train_acc, test_acc, train_top5, test_top5])
+
+        # save model
+        is_best = test_acc > best_acc
+        best_acc = max(test_acc, best_acc)
+        # save_checkpoint({
+        #         'epoch': epoch,
+        #         'state_dict': model.state_dict(),
+        #         'acc': test_acc,
+        #         'best_acc': best_acc,
+        #         'optimizer' : optimizer.state_dict(),
+        #     }, is_best, checkpoint=args.checkpoint)
+
+    logger.close()
+    # logger.plot()
+    # savefig(os.path.join(args.checkpoint, 'log.eps'))
+
+    print('Best test acc: {:.3f}'.format(best_acc))
+
+
+def exp_lr_scheduler(optimizer, epoch, init_lr=args.lr, lr_decay_epoch=20):
+    """Decay learning rate by a factor of 0.1 every lr_decay_epoch epochs."""
+    lr = init_lr * (0.1**(epoch // lr_decay_epoch))
+    # if epoch % lr_decay_epoch == 0:
+        # print('LR is set to {}'.format(lr))
+    for param_group in optimizer.param_groups:
+        param_group['lr'] = lr
+
+    return lr, optimizer
+
+def save_checkpoint(state, is_best, checkpoint='checkpoint', filename='checkpoint.pth.tar'):
+    filepath = os.path.join(checkpoint, filename)
+    torch.save(state, filepath)
+    if is_best:
+        shutil.copyfile(filepath, os.path.join(checkpoint, 'model_best.pth.tar'))
+
+if __name__ == '__main__':
+    main()
