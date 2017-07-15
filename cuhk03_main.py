@@ -2,6 +2,7 @@ from __future__ import print_function
 import argparse
 import h5py
 import sys
+import os
 import time
 import datetime
 import shutil
@@ -218,7 +219,7 @@ def main():
     pretrain = ''
     if 0:
         model = models.vgg11(pretrained=True)
-	    pretrain = '1'
+        pretrain = '1'
         # model.fc = nn.Linear(4096, 843)
         m = model.classifier._modules['6']
         m = nn.Linear(4096, 843)
