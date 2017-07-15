@@ -175,7 +175,6 @@ def main():
     if 0:
         model = models.vgg11(pretrained=True)
         pretrain = '1'
-        # model.fc = nn.Linear(4096, 843)
         model.classifier._modules['6'] = nn.Linear(4096, 843)
 
         # m = model.classifier._modules['6']
@@ -189,11 +188,11 @@ def main():
         model = models.resnet18(pretrained=True)
         pretrain = '1'
         num_ftrs = model.fc.in_features
-	model.fc = nn.Linear(num_ftrs, 843)
+        model.fc = nn.Linear(num_ftrs, 843)
 
         # m = list(model.children())[-1]
         # m = nn.Linear(num_ftrs, 843)
-	# m = nn.Linear(num_ftrs, 1467)
+        # m = nn.Linear(num_ftrs, 1467)
         # m.weight.data.normal_(0.0, 0.3)
         # m.bias.data.zero_()
         # m.bias.data.fill_(0)
@@ -210,7 +209,7 @@ def main():
         # m = nn.Linear(4096, 1467)
         # m = nn.Linear(4096, 843)
         # m.weight.data.normal_(0.0, 0.3)
-        import torch.nn.init as init
+        # import torch.nn.init as init
         # init.constant(m.bias, 0.0)
         model.features = torch.nn.DataParallel(model.features)
         model_name = 'alexnet'
