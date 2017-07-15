@@ -36,7 +36,7 @@ def create_dataset(file_path):
         tes_index = (f[f['testsets'][0][1]][:].T - 1).tolist()
 
         # just use camera pair 1 (totally 5 pairs)
-        for i in xrange(5):
+        for i in xrange(1, 5):
             for k in xrange(f[f['labeled'][0][i]][0].size):
                 print i,k
                 for j in it.chain(xrange(1, 5), xrange(6, 10)):

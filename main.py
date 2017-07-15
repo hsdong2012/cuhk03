@@ -27,10 +27,10 @@ parser.add_argument('--train-batch-size', type=int, default=20, metavar='N',
                     help='input batch size for training (default: 20)')
 parser.add_argument('--test-batch-size', type=int, default=20, metavar='N',
                     help='input batch size for testing (default: 10)')
-parser.add_argument('--epochs', type=int, default=30, metavar='N',
-                    help='number of epochs to train (default: 30)')
-parser.add_argument('--lr', type=float, default=0.005, metavar='LR',
-                    help='learning rate (default: 0.005)')
+parser.add_argument('--epochs', type=int, default=60, metavar='N',
+                    help='number of epochs to train (default: 60)')
+parser.add_argument('--lr', type=float, default=0.01, metavar='LR',
+                    help='learning rate (default: 0.01)')
 parser.add_argument('--momentum', type=float, default=0.5, metavar='M',
                     help='SGD momentum (default: 0.5)')
 parser.add_argument('--weight-decay', '--wd', default=1e-4, type=float,
@@ -107,16 +107,14 @@ def train(model, criterion, optimizer, epoch):
         end = time.time()
         if batch_idx % args.log_interval == 0:
             print('Epoch: [{0}][{1}/{2}]\t'
-                  'Time {batch_time.val:.3f} ({batch_time.avg:.3f})\t'
-                  'Data {data_time.val:.3f} ({data_time.avg:.3f})\t'
-                  'Loss {loss.val:.4f} ({loss.avg:.4f})\t'
-                  'Prec@1 {top1.val:.3f} ({top1.avg:.3f})\t'
-                  'Prec@5 {top5.val:.3f} ({top5.avg:.3f})'.format(
-                   epoch, batch_idx, len(train_loader), batch_time=batch_time,
-                   data_time=data_time, loss=losses, top1=top1, top5=top5))
+                  'Loss {loss.val:.4f}({loss.avg:.4f})\t'
+                  'Prec@1 {top1.val:.3f}({top1.avg:.3f})\t'
+                  'Prec@5 {top5.val:.3f}({top5.avg:.3f})'.format(
+                   epoch, batch_idx, len(train_loader), loss=losses,
+                   top1=top1, top5=top5))
             print()
     print('Train batch size: %s' %(args.train_batch_size))
-    print('Top1(train) : {:.3f}%\tTop5(train) : {:.3f}%'.format(
+    print('Top1(train) : {:.3f}%\t''Top5(train) : {:.3f}%'.format(
         top1.avg, top5.avg))
     print('Train Average Loss: {:.4f}'.format(losses.avg))
     print()
@@ -149,11 +147,10 @@ def test(model, criterion, epoch):
         end = time.time()
         if batch_idx % args.log_interval == 0:
             print('Test: [{0}/{1}]\t'
-                  'Time {batch_time.val:.3f} ({batch_time.avg:.3f})\t'
                   'Loss {loss.val:.4f} ({loss.avg:.4f})\t'
                   'Prec@1 {top1.val:.3f} ({top1.avg:.3f})\t'
                   'Prec@5 {top5.val:.3f} ({top5.avg:.3f})'.format(
-                   batch_idx, len(val_loader), batch_time=batch_time, loss=losses,
+                   batch_idx, len(val_loader), loss=losses,
                    top1=top1, top5=top5))
             print()
     print('Test batch size: %s' %(args.test_batch_size))
@@ -171,15 +168,35 @@ def main():
     if not os.path.isdir(args.checkpoint):
         mkdir_p(args.checkpoint)
 
+
+    
+    # model = models.vgg11(pretrained=True)
+    # model.fc = nn.Linear(4096, 843)
+    # m = model.classifier._modules['6']
+    # m = nn.Linear(4096, 843)
+    # m.weight.data.normal_(0.0, 0.3)
+    # m.bias.data.zero_()
+    # model.features = torch.nn.DataParallel(model.features)
+
+    # model = models.resnet18(pretrained=True)
+    # m = list(model.children())[-1]
+    # num_ftrs = model.fc.in_features
+    # m = nn.Linear(num_ftrs, 843)
+    # m.weight.data.normal_(0.0, 0.3)
+    # m.bias.data.zero_()
+    # m.bias.data.fill_(0)
+    # model = torch.nn.DataParallel(model)
+
     model = models.alexnet(pretrained=True)
     m = model.classifier._modules['6']
+    # m = nn.Linear(4096, 624)
     # m = nn.Linear(4096, 1467)
     m = nn.Linear(4096, 843)
     m.weight.data.normal_(0.0, 0.3)
     import torch.nn.init as init
     init.constant(m.bias, 0.0)
-
     model.features = torch.nn.DataParallel(model.features)
+
     if args.cuda:
         model.cuda()
     cudnn.benchmark = True
@@ -221,7 +238,7 @@ def main():
     print('Best test acc: {:.3f}'.format(best_acc))
 
 
-def exp_lr_scheduler(optimizer, epoch, init_lr=args.lr, lr_decay_epoch=10):
+def exp_lr_scheduler(optimizer, epoch, init_lr=args.lr, lr_decay_epoch=20):
     """Decay learning rate by a factor of 0.1 every lr_decay_epoch epochs."""
     lr = init_lr * (0.1**(epoch // lr_decay_epoch))
     # if epoch % lr_decay_epoch == 0:
