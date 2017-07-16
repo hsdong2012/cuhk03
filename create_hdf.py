@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 # --------------------------------------------------------
-# Group a has train, test, and validation datasets
-# Group b has test and validation datasets
+# Group a has train, test, and val datasets
+# Group b has test and val datasets
 # --------------------------------------------------------
 
 """
@@ -37,15 +37,15 @@ def create_dataset(file_path):
         fwb = fw.create_group('b')
         fwat = fwa.create_group('train')
         fwae = fwa.create_group('test')
-        fwav = fwa.create_group('validation')
+        fwav = fwa.create_group('val')
         fwat_id = fwa.create_group('train_id')
         fwae_id = fwa.create_group('test_id')
-        fwav_id = fwa.create_group('validation_id')
+        fwav_id = fwa.create_group('val_id')
 
         # fwbt = fwb.create_group('train')
         # fwbt_id = fwb.create_group('train_id')
-        fwbv = fwb.create_group('validation')
-        fwbv_id = fwb.create_group('validation_id')
+        fwbv = fwb.create_group('val')
+        fwbv_id = fwb.create_group('val_id')
         fwbe = fwb.create_group('test')
         fwbe_id = fwb.create_group('test_id')
 
@@ -65,7 +65,7 @@ def create_dataset(file_path):
         a_count_e_id = 0
         b_count_v_id = 0
         b_count_e_id = 0
-        # just use camera pair 1 (totally 5 pairs)
+        # use five camera pairs
         for i in xrange(5):
             for k in xrange(f[f['labeled'][0][i]][0].size):
                 print i,k
@@ -78,8 +78,8 @@ def create_dataset(file_path):
                 a_count_t += 1
 
                 # if [i,k] in val_index:
-                if 0:
-                    a_temp_v_id.append(k)
+                if 1:
+                    a_temp_v_id.append(k+i*1000)
                     for j in xrange(1):
                         if len(f[f[f['labeled'][0][i]][j][k]].shape) == 3:
                             temp.append(np.array((Image.fromarray(f[f[f['labeled'][0][i]][j][k]][:].transpose(2,1,0))).resize((224,224))) / 255.)
@@ -87,7 +87,7 @@ def create_dataset(file_path):
                     temp = []
                     a_count_v += 1
 
-                    b_temp_v_id.append(k)
+                    b_temp_v_id.append(k+i*1000)
                     for j in xrange(5,6):
                         if len(f[f[f['labeled'][0][i]][j][k]].shape) == 3:
                             temp.append(np.array((Image.fromarray(f[f[f['labeled'][0][i]][j][k]][:].transpose(2,1,0))).resize((224,224))) / 255.)
@@ -96,8 +96,8 @@ def create_dataset(file_path):
                     b_count_v += 1
 
                 # if [i,k] in tes_index:
-                if 1:
-                    a_temp_e_id.append(k)
+                if 0:
+                    a_temp_e_id.append(k+i*1000)
                     for j in xrange(1):
                         if len(f[f[f['labeled'][0][i]][j][k]].shape) == 3:
                             temp.append(np.array((Image.fromarray(f[f[f['labeled'][0][i]][j][k]][:].transpose(2,1,0))).resize((224,224))) / 255.)
@@ -105,7 +105,7 @@ def create_dataset(file_path):
                     temp = []
                     a_count_e += 1
 
-                    b_temp_e_id.append(k)
+                    b_temp_e_id.append(k+i*1000)
                     for j in xrange(5,6):
                         if len(f[f[f['labeled'][0][i]][j][k]].shape) == 3:
                             temp.append(np.array((Image.fromarray(f[f[f['labeled'][0][i]][j][k]][:].transpose(2,1,0))).resize((224,224))) / 255.)

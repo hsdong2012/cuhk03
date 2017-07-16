@@ -29,6 +29,7 @@ parser.add_argument('--test-batch-size', type=int, default=10, metavar='N',
                     help='input batch size for testing (default: 10)')
 parser.add_argument('--epochs', type=int, default=60, metavar='N',
                     help='number of epochs to train (default: 60)')
+# lr=0.1 for resnet, 0.01 for alexnet and vgg
 parser.add_argument('--lr', type=float, default=0.01, metavar='LR',
                     help='learning rate (default: 0.01)')
 parser.add_argument('--momentum', type=float, default=0.005, metavar='M',
@@ -77,7 +78,7 @@ def _get_train_data(train, group):
         data_std = np.std(data_for_mean, (1, 2, 3))
 
         features = torch.from_numpy(data)
-        transform = transforms.Normalize(data_mean, data_std)
+        transform = transforms.Normalize(mean=[0.367, 0.362, 0.357], std=[0.244, 0.247, 0.249])
         for j in range(num_sample_total):
             features[j] = transform(features[j])
 
@@ -257,14 +258,9 @@ def main():
         criterion = nn.CrossEntropyLoss().cuda()
 
     title = 'CUHK03-AlexNet'
-    now_datetime = str(datetime.datetime.now())
-    array0 = now_datetime.split(' ')
-    yymmdd = array0[0]
-    time_array = array0[1].split(':')
-    hour_min = time_array[0]+time_array[1]
-    log_filename = 'log-'+model_name+'-'+pretrain+'-'+yymmdd+'-'+hour_min+'.txt'
+    date_time = get_datetime()
+    log_filename = 'log-class'+str(classes_num[0])+'-'+model_name+'-'+pretrain+'-'+yymmdd+'-'+hour_min+'.txt'
     logger = Logger(os.path.join(args.checkpoint, log_filename), title=title)
-    # logger = Logger(os.path.join(args.checkpoint, 'log.txt'), title=title)
     logger.set_names(['Learning Rate', 'Train Loss', 'Valid Loss', 'Train Acc.', 'Valid Acc.', 'Train Top5', 'Valid Top5'])
     # Train and val
     for epoch in range(1, args.epochs + 1):
@@ -310,6 +306,15 @@ def save_checkpoint(state, is_best, checkpoint='checkpoint', filename='checkpoin
     torch.save(state, filepath)
     if is_best:
         shutil.copyfile(filepath, os.path.join(checkpoint, 'model_best.pth.tar'))
+
+def get_datetime():
+    now_datetime = str(datetime.datetime.now())
+    array0 = now_datetime.split(' ')
+    yymmdd = array0[0]
+    time_array = array0[1].split(':')
+    hour_min = time_array[0]+time_array[1]
+    date_time = yymmdd+'-'+hour_min
+    return date_time
 
 if __name__ == '__main__':
     main()

@@ -30,6 +30,7 @@ parser.add_argument('--test-batch-size', type=int, default=20, metavar='N',
                     help='input batch size for testing (default: 10)')
 parser.add_argument('--epochs', type=int, default=60, metavar='N',
                     help='number of epochs to train (default: 60)')
+# lr=0.1 for resnet, 0.01 for alexnet and vgg
 parser.add_argument('--lr', type=float, default=0.01, metavar='LR',
                     help='learning rate (default: 0.01)')
 parser.add_argument('--momentum', type=float, default=0.5, metavar='M',
@@ -175,7 +176,7 @@ def main():
     classes_num = [843, 1467, 624]
     if 0:
         model = models.vgg11(pretrained=True)
-        model.classifier._modules['6'] = nn.Linear(4096, classes_num[0])
+        model.classifier._modules['6'] = nn.Linear(4096, classes_num[1])
         # model.classifier._modules['6'].weight.data.normal_(0.0, 0.3)
         # model.classifier._modules['6'].bias.data.zero_()
         model.features = torch.nn.DataParallel(model.features)
@@ -185,7 +186,7 @@ def main():
     if 0:
         model = models.resnet18(pretrained=True)
         num_ftrs = model.fc.in_features
-        model.fc = nn.Linear(num_ftrs, classes_num[0])
+        model.fc = nn.Linear(num_ftrs, classes_num[1])
         # model.fc.weight.data.normal_(0.0, 0.3)
         # model.fc.bias.data.fill_(0)
         model = torch.nn.DataParallel(model)
@@ -194,7 +195,7 @@ def main():
 
     if 1:
         model = models.alexnet(pretrained=True)
-        model.classifier._modules['6'] = nn.Linear(4096, classes_num[0])
+        model.classifier._modules['6'] = nn.Linear(4096, classes_num[1])
         # model.classifier._modules['6'].weight.data.normal_(0.0, 0.3)
         import torch.nn.init as init
         # init.constant(model.classifier._modules['6'].bias, 0.0)
@@ -212,14 +213,9 @@ def main():
         criterion = nn.CrossEntropyLoss().cuda()
 
     title = 'CUHK03-AlexNet'
-    now_datetime = str(datetime.datetime.now())
-    array0 = now_datetime.split(' ')
-    yymmdd = array0[0]
-    time_array = array0[1].split(':')
-    hour_min = time_array[0]+time_array[1]
-    log_filename = 'log-'+model_name+'-'+pretrain+'-'+yymmdd+'-'+hour_min+'.txt'
+    date_time = get_datetime()
+    log_filename = 'log-class'+str(classes_num[1])+'-'+model_name+'-'+pretrain+'-'+date_time+'.txt'
     logger = Logger(os.path.join(args.checkpoint, log_filename), title=title)
-    # logger = Logger(os.path.join(args.checkpoint, 'log.txt'), title=title)
     logger.set_names(['Learning Rate', 'Train Loss', 'Valid Loss', 'Train Acc.', 'Valid Acc.', 'Train Top5', 'Valid Top5'])
     # Train and val
     for epoch in range(1, args.epochs + 1):
@@ -265,24 +261,14 @@ def save_checkpoint(state, is_best, checkpoint='checkpoint', filename='checkpoin
     torch.save(state, filepath)
     if is_best:
         shutil.copyfile(filepath, os.path.join(checkpoint, 'model_best.pth.tar'))
+def get_datetime():
+    now_datetime = str(datetime.datetime.now())
+    array0 = now_datetime.split(' ')
+    yymmdd = array0[0]
+    time_array = array0[1].split(':')
+    hour_min = time_array[0]+time_array[1]
+    date_time = yymmdd+'-'+hour_min
+    return date_time
 
 if __name__ == '__main__':
     main()
-
-
-# model = models.vgg11(pretrained=True)
-# model.fc = nn.Linear(4096, 843)
-# m = model.classifier._modules['6']
-# m = nn.Linear(4096, 843)
-# m.weight.data.normal_(0.0, 0.3)
-# m.bias.data.zero_()
-
-# model = models.resnet18(pretrained=True)
-# m = list(model.children())[-1]
-# num_ftrs = model.fc.in_features
-# m = nn.Linear(num_ftrs, 843)
-# m.weight.data.normal_(0.0, 0.3)
-# m.bias.data.zero_()
-# m.bias.data.fill_(0)
-
-# model = AlexNet()
