@@ -69,7 +69,7 @@ def create_dataset(file_path):
         for i in xrange(5):
             for k in xrange(f[f['labeled'][0][i]][0].size):
                 print i,k
-                a_temp_t_id.append(k+i*1000)
+                a_temp_t_id.append(k)
                 for j in it.chain(xrange(1, 5), xrange(6, 10)):
                     if len(f[f[f['labeled'][0][i]][j][k]].shape) == 3:
                         temp.append(np.array((Image.fromarray(f[f[f['labeled'][0][i]][j][k]][:].transpose(2,1,0))).resize((224,224))) / 255.)
@@ -79,7 +79,7 @@ def create_dataset(file_path):
 
                 # if [i,k] in val_index:
                 if 1:
-                    a_temp_v_id.append(k+i*1000)
+                    a_temp_v_id.append(k)
                     for j in xrange(1):
                         if len(f[f[f['labeled'][0][i]][j][k]].shape) == 3:
                             temp.append(np.array((Image.fromarray(f[f[f['labeled'][0][i]][j][k]][:].transpose(2,1,0))).resize((224,224))) / 255.)
@@ -87,7 +87,7 @@ def create_dataset(file_path):
                     temp = []
                     a_count_v += 1
 
-                    b_temp_v_id.append(k+i*1000)
+                    b_temp_v_id.append(k)
                     for j in xrange(5,6):
                         if len(f[f[f['labeled'][0][i]][j][k]].shape) == 3:
                             temp.append(np.array((Image.fromarray(f[f[f['labeled'][0][i]][j][k]][:].transpose(2,1,0))).resize((224,224))) / 255.)
@@ -97,7 +97,7 @@ def create_dataset(file_path):
 
                 # if [i,k] in tes_index:
                 if 0:
-                    a_temp_e_id.append(k+i*1000)
+                    a_temp_e_id.append(k)
                     for j in xrange(1):
                         if len(f[f[f['labeled'][0][i]][j][k]].shape) == 3:
                             temp.append(np.array((Image.fromarray(f[f[f['labeled'][0][i]][j][k]][:].transpose(2,1,0))).resize((224,224))) / 255.)
@@ -105,7 +105,7 @@ def create_dataset(file_path):
                     temp = []
                     a_count_e += 1
 
-                    b_temp_e_id.append(k+i*1000)
+                    b_temp_e_id.append(k)
                     for j in xrange(5,6):
                         if len(f[f[f['labeled'][0][i]][j][k]].shape) == 3:
                             temp.append(np.array((Image.fromarray(f[f[f['labeled'][0][i]][j][k]][:].transpose(2,1,0))).resize((224,224))) / 255.)

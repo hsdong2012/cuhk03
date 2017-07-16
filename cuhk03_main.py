@@ -53,31 +53,28 @@ if args.cuda:
     torch.cuda.manual_seed(args.seed)
 
 def _get_train_data(train, group):
+    class_num = [843, 440, 77, 58, 49]
     with h5py.File('cuhk-03.h5', 'r') as ff:
         temp = []
-        num_sample = len(ff[group][train+'_id'][str(0)])
         num_of_same_image_array = []
         num_sample_total = 0
-        for i in range(num_sample):
+        for i in range(843, 843+440):
             num_of_same_image = len(ff[group][train][str(i)])
             num_sample_total += num_of_same_image
             num_of_same_image_array.append(num_of_same_image)
             for k in range(num_of_same_image):
                 temp.append(np.array(ff[group][train][str(i)][k]))
         image_set = np.array(temp)
-        image_id_temp = np.array(ff[group][train+'_id'][str(0)])
+        image_id_temp = np.array(ff[group][train+'_id'][str(1)])
         image_id = []
-        for i in range(num_sample):
+        for i in range(440):
             for k in range(num_of_same_image_array[i]):
                 image_id.append(image_id_temp[i])
         image_id = np.array(image_id)
 
         data = image_set.transpose(0, 3, 1, 2)
-        data_for_mean = image_set.transpose(3, 0, 1, 2)
-        data_mean = np.mean(data_for_mean, (1, 2, 3))
-        data_std = np.std(data_for_mean, (1, 2, 3))
-
         features = torch.from_numpy(data)
+
         transform = transforms.Normalize(mean=[0.367, 0.362, 0.357], std=[0.244, 0.247, 0.249])
         for j in range(num_sample_total):
             features[j] = transform(features[j])
@@ -89,9 +86,9 @@ def _get_train_data(train, group):
 
 def _get_data(val_or_test, group):
     with h5py.File('cuhk-03.h5','r') as ff:
-        num_sample = len(ff[group][val_or_test+'_id'][str(0)])
-        image_set = np.array([ff[group][val_or_test][str(i)][0] for i in range(num_sample)])
-        image_id = np.array(ff[group][val_or_test+'_id'][str(0)])
+        num_sample = len(ff[group][val_or_test+'_id'][str(1)])
+        image_set = np.array([ff[group][val_or_test][str(i)][0] for i in range(843, 843+num_sample)])
+        image_id = np.array(ff[group][val_or_test+'_id'][str(1)])
         data = image_set.transpose(0, 3, 1, 2)
         features = torch.from_numpy(data)
         transform = transforms.Normalize(mean=[0.367, 0.362, 0.357], std=[0.244, 0.247, 0.249])
@@ -108,7 +105,7 @@ print('train target size', train_targets.size())
 train = data_utils.TensorDataset(train_features, train_targets)
 train_loader = data_utils.DataLoader(train, batch_size=args.train_batch_size, shuffle=True)
 
-val_features, val_targets = _get_data('test', 'b')
+val_features, val_targets = _get_data('val', 'a')
 print('val data size', val_features.size())
 print('val target size', val_targets.size())
 val = data_utils.TensorDataset(val_features, val_targets)
@@ -218,10 +215,10 @@ def main():
 
     model_name = ''
     pretrain = ''
-    classes_num = [843, 1467, 624]
+    classes_num = [843, 440, 77, 58, 49]
     if 0:
         model = models.vgg11(pretrained=True)
-        model.classifier._modules['6'] = nn.Linear(4096, classes_num[0])
+        model.classifier._modules['6'] = nn.Linear(4096, classes_num[1])
         # model.classifier._modules['6'].weight.data.normal_(0.0, 0.3)
         # model.classifier._modules['6'].bias.data.zero_()
         model.features = torch.nn.DataParallel(model.features)
@@ -231,7 +228,7 @@ def main():
     if 0:
         model = models.resnet18(pretrained=True)
         num_ftrs = model.fc.in_features
-        model.fc = nn.Linear(num_ftrs, classes_num[0])
+        model.fc = nn.Linear(num_ftrs, classes_num[1])
         # model.fc.weight.data.normal_(0.0, 0.3)
         # model.fc.bias.data.fill_(0)
         model = torch.nn.DataParallel(model)
@@ -240,7 +237,7 @@ def main():
 
     if 1:
         model = models.alexnet(pretrained=True)
-        model.classifier._modules['6'] = nn.Linear(4096, classes_num[0])
+        model.classifier._modules['6'] = nn.Linear(4096, classes_num[1])
         # model.classifier._modules['6'].weight.data.normal_(0.0, 0.3)
         import torch.nn.init as init
         # init.constant(model.classifier._modules['6'].bias, 0.0)
@@ -259,7 +256,7 @@ def main():
 
     title = 'CUHK03-AlexNet'
     date_time = get_datetime()
-    log_filename = 'log-class'+str(classes_num[0])+'-'+model_name+'-'+pretrain+'-'+yymmdd+'-'+hour_min+'.txt'
+    log_filename = 'log-class'+str(classes_num[1])+'-'+model_name+'-'+pretrain+'-'+date_time+'.txt'
     logger = Logger(os.path.join(args.checkpoint, log_filename), title=title)
     logger.set_names(['Learning Rate', 'Train Loss', 'Valid Loss', 'Train Acc.', 'Valid Acc.', 'Train Top5', 'Valid Top5'])
     # Train and val
