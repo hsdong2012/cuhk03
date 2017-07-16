@@ -52,13 +52,14 @@ torch.manual_seed(args.seed)
 if args.cuda:
     torch.cuda.manual_seed(args.seed)
 
-def _get_train_data(train, group):
+# get train dataset of one camera pair (pair 1)
+def _get_train_data_of_one_camera_pair(train, group):
     class_num = [843, 440, 77, 58, 49]
     with h5py.File('cuhk-03.h5', 'r') as ff:
         temp = []
         num_of_same_image_array = []
         num_sample_total = 0
-        for i in range(843, 843+440):
+        for i in range(class_num[0], class_num[0]+class_num[1]):
             num_of_same_image = len(ff[group][train][str(i)])
             num_sample_total += num_of_same_image
             num_of_same_image_array.append(num_of_same_image)
@@ -67,7 +68,7 @@ def _get_train_data(train, group):
         image_set = np.array(temp)
         image_id_temp = np.array(ff[group][train+'_id'][str(1)])
         image_id = []
-        for i in range(440):
+        for i in range(class_num[1]):
             for k in range(num_of_same_image_array[i]):
                 image_id.append(image_id_temp[i])
         image_id = np.array(image_id)
@@ -83,21 +84,64 @@ def _get_train_data(train, group):
 
         return features, targets
 
+#get train dataset of five camera pairs
+def _get_train_data(train, group):
+    class_num = [843, 440, 77, 58, 49]
+    with h5py.File('cuhk-03.h5', 'r') as ff:
+        temp = []
+        num_of_same_image_array = []
+        num_sample_total = 0
+        for i in range(sum(class_num)):
+            num_of_same_image = len(ff[group][train][str(i)])
+            num_sample_total += num_of_same_image
+            num_of_same_image_array.append(num_of_same_image)
+            for k in range(num_of_same_image):
+                temp.append(np.array(ff[group][train][str(i)][k]))
+        image_set = np.array(temp)
 
-def _get_data(val_or_test, group):
+        image_id = []
+        for i in range(sum(class_num)):
+            for k in range(num_of_same_image_array[i]):
+                image_id.append(i)
+        image_id = np.array(image_id)
+        targets = torch.from_numpy(image_id)
+
+        data = image_set.transpose(0, 3, 1, 2)
+        features = torch.from_numpy(data)
+
+        transform = transforms.Normalize(mean=[0.367, 0.362, 0.357], std=[0.244, 0.247, 0.249])
+        for j in range(num_sample_total):
+            features[j] = transform(features[j])
+
+        return features, targets
+
+# get validation dataset of one camera pair (pair 1)
+def _get_data_of_one_camera_pair(val_or_test, group):
+    class_num = [843, 440, 77, 58, 49]
     with h5py.File('cuhk-03.h5','r') as ff:
-        num_sample = len(ff[group][val_or_test+'_id'][str(1)])
-        image_set = np.array([ff[group][val_or_test][str(i)][0] for i in range(843, 843+num_sample)])
+        image_set = np.array([ff[group][val_or_test][str(i)][0] for i in range(class_num[0], class_num[0]+class_num[1])])
         image_id = np.array(ff[group][val_or_test+'_id'][str(1)])
         data = image_set.transpose(0, 3, 1, 2)
         features = torch.from_numpy(data)
         transform = transforms.Normalize(mean=[0.367, 0.362, 0.357], std=[0.244, 0.247, 0.249])
-        for j in range(num_sample):
+        for j in range(class_num[1]):
             features[j] = transform(features[j])
         targets = torch.from_numpy(image_id)
         return features, targets
 
-
+# get validation dataset of five camera pairs
+def _get_data(val_or_test, group):
+    class_num = [843, 440, 77, 58, 49]
+    with h5py.File('cuhk-03.h5','r') as ff:
+        image_set = np.array([ff[group][val_or_test][str(i)][0] for i in range(sum(class_num))])
+        image_id = np.array([i for i in range(sum(class_num))])
+        data = image_set.transpose(0, 3, 1, 2)
+        features = torch.from_numpy(data)
+        transform = transforms.Normalize(mean=[0.367, 0.362, 0.357], std=[0.244, 0.247, 0.249])
+        for j in range(sum(class_num)):
+            features[j] = transform(features[j])
+        targets = torch.from_numpy(image_id)
+        return features, targets
 
 train_features, train_targets = _get_train_data('train', 'a')
 print('train data size', train_features.size())
