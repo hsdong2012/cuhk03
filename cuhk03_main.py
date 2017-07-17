@@ -281,7 +281,7 @@ def main():
 
     if 1:
         model = models.alexnet(pretrained=True)
-        model.classifier._modules['6'] = nn.Linear(4096, classes_num[1])
+        model.classifier._modules['6'] = nn.Linear(4096, sum(classes_num))
         # model.classifier._modules['6'].weight.data.normal_(0.0, 0.3)
         import torch.nn.init as init
         # init.constant(model.classifier._modules['6'].bias, 0.0)
@@ -300,7 +300,7 @@ def main():
 
     title = 'CUHK03-AlexNet'
     date_time = get_datetime()
-    log_filename = 'log-class'+str(classes_num[1])+'-'+model_name+'-'+pretrain+'-'+date_time+'.txt'
+    log_filename = 'log-class'+str(sum(classes_num))+'-'+model_name+'-'+pretrain+'-'+date_time+'.txt'
     logger = Logger(os.path.join(args.checkpoint, log_filename), title=title)
     logger.set_names(['Learning Rate', 'Train Loss', 'Valid Loss', 'Train Acc.', 'Valid Acc.', 'Train Top5', 'Valid Top5'])
     # Train and val
