@@ -52,38 +52,6 @@ torch.manual_seed(args.seed)
 if args.cuda:
     torch.cuda.manual_seed(args.seed)
 
-# get train dataset of one camera pair (pair 1)
-def _get_train_data_of_one_camera_pair(train, group):
-    class_num = [843, 440, 77, 58, 49]
-    with h5py.File('cuhk-03.h5', 'r') as ff:
-        temp = []
-        num_of_same_image_array = []
-        num_sample_total = 0
-        for i in range(class_num[0], class_num[0]+class_num[1]):
-            num_of_same_image = len(ff[group][train][str(i)])
-            num_sample_total += num_of_same_image
-            num_of_same_image_array.append(num_of_same_image)
-            for k in range(num_of_same_image):
-                temp.append(np.array(ff[group][train][str(i)][k]))
-        image_set = np.array(temp)
-        image_id_temp = np.array(ff[group][train+'_id'][str(1)])
-        image_id = []
-        for i in range(class_num[1]):
-            for k in range(num_of_same_image_array[i]):
-                image_id.append(image_id_temp[i])
-        image_id = np.array(image_id)
-
-        data = image_set.transpose(0, 3, 1, 2)
-        features = torch.from_numpy(data)
-
-        transform = transforms.Normalize(mean=[0.367, 0.362, 0.357], std=[0.244, 0.247, 0.249])
-        for j in range(num_sample_total):
-            features[j] = transform(features[j])
-
-        targets = torch.from_numpy(image_id)
-
-        return features, targets
-
 #get train dataset of five camera pairs
 def _get_train_data(train, group):
     class_num = [843, 440, 77, 58, 49]
@@ -115,20 +83,6 @@ def _get_train_data(train, group):
 
         return features, targets
 
-# get validation dataset of one camera pair (pair 1)
-def _get_data_of_one_camera_pair(val_or_test, group):
-    class_num = [843, 440, 77, 58, 49]
-    with h5py.File('cuhk-03.h5','r') as ff:
-        image_set = np.array([ff[group][val_or_test][str(i)][0] for i in range(class_num[0], class_num[0]+class_num[1])])
-        image_id = np.array(ff[group][val_or_test+'_id'][str(1)])
-        data = image_set.transpose(0, 3, 1, 2)
-        features = torch.from_numpy(data)
-        transform = transforms.Normalize(mean=[0.367, 0.362, 0.357], std=[0.244, 0.247, 0.249])
-        for j in range(class_num[1]):
-            features[j] = transform(features[j])
-        targets = torch.from_numpy(image_id)
-        return features, targets
-
 # get validation dataset of five camera pairs
 def _get_data(val_or_test, group):
     class_num = [843, 440, 77, 58, 49]
@@ -143,13 +97,16 @@ def _get_data(val_or_test, group):
         targets = torch.from_numpy(image_id)
         return features, targets
 
-train_features, train_targets = _get_train_data('train', 'a')
+labeled_train_features, labeled_train_targets = _get_train_data('train', 'a')
+detected_train_features, detected_train_targets = _get_train_data('train', 'b')
+train_features = torch.cat((labeled_train_targets, detected_train_targets), 0)
+train_targets = torch.cat((labeled_train_features, detected_train_features), 0)
 print('train data size', train_features.size())
 print('train target size', train_targets.size())
 train = data_utils.TensorDataset(train_features, train_targets)
 train_loader = data_utils.DataLoader(train, batch_size=args.train_batch_size, shuffle=True)
 
-val_features, val_targets = _get_data('val', 'a')
+val_features, val_targets = _get_data('val_1', 'a')
 print('val data size', val_features.size())
 print('val target size', val_targets.size())
 val = data_utils.TensorDataset(val_features, val_targets)
