@@ -57,8 +57,10 @@ if args.cuda:
 kwargs = {'num_workers': 1, 'pin_memory': True} if args.cuda else {}
 normalize = transforms.Normalize(mean = [ 0.367, 0.362, 0.357 ],
                                  std = [ 0.244, 0.247, 0.249 ])
-traindir = os.path.join('.', 'train')
-valdir = os.path.join('.', 'val')
+# traindir = os.path.join('.', 'train')
+traindir = os.path.join('/data2/hbsun/labeled_detected_cuhk03', 'train')
+# valdir = os.path.join('.', 'val')
+valdir = os.path.join('/data2/hbsun/labeled_detected_cuhk03', 'val')
 train_loader = torch.utils.data.DataLoader(
     datasets.ImageFolder(traindir, transform=transforms.Compose([
                        transforms.ToTensor(),

@@ -30,8 +30,8 @@ parser.add_argument('--test-batch-size', type=int, default=10, metavar='N',
 parser.add_argument('--epochs', type=int, default=60, metavar='N',
                     help='number of epochs to train (default: 60)')
 # lr=0.1 for resnet, 0.01 for alexnet and vgg
-parser.add_argument('--lr', type=float, default=0.01, metavar='LR',
-                    help='learning rate (default: 0.01)')
+parser.add_argument('--lr', type=float, default=0.05, metavar='LR',
+                    help='learning rate (default: 0.05)')
 parser.add_argument('--momentum', type=float, default=0.005, metavar='M',
                     help='SGD momentum (default: 0.5)')
 parser.add_argument('--weight-decay', '--wd', default=1e-4, type=float,
@@ -55,7 +55,8 @@ if args.cuda:
 #get train dataset of five camera pairs
 def _get_train_data(train, group):
     class_num = [843, 440, 77, 58, 49]
-    with h5py.File('cuhk-03.h5', 'r') as ff:
+    # with h5py.File('cuhk-03.h5', 'r') as ff:
+    with h5py.File('/data2/hbsun/labeled_detected_cuhk03/cuhk-03.h5', 'r') as ff:
         temp = []
         num_of_same_image_array = []
         num_sample_total = 0
@@ -86,7 +87,8 @@ def _get_train_data(train, group):
 # get validation dataset of five camera pairs
 def _get_data(val_or_test, group):
     class_num = [843, 440, 77, 58, 49]
-    with h5py.File('cuhk-03.h5','r') as ff:
+    # with h5py.File('cuhk-03.h5','r') as ff:
+    with h5py.File('/data2/hbsun/labeled_detected_cuhk03/cuhk-03.h5', 'r') as ff:
         image_set = np.array([ff[group][val_or_test][str(i)][0] for i in range(sum(class_num))])
         image_id = np.array([i for i in range(sum(class_num))])
         data = image_set.transpose(0, 3, 1, 2)
@@ -99,14 +101,14 @@ def _get_data(val_or_test, group):
 
 labeled_train_features, labeled_train_targets = _get_train_data('train', 'a')
 detected_train_features, detected_train_targets = _get_train_data('train', 'b')
-train_features = torch.cat((labeled_train_targets, detected_train_targets), 0)
-train_targets = torch.cat((labeled_train_features, detected_train_features), 0)
+train_targets = torch.cat((labeled_train_targets, detected_train_targets), 0)
+train_features = torch.cat((labeled_train_features, detected_train_features), 0)
 print('train data size', train_features.size())
 print('train target size', train_targets.size())
 train = data_utils.TensorDataset(train_features, train_targets)
 train_loader = data_utils.DataLoader(train, batch_size=args.train_batch_size, shuffle=True)
 
-val_features, val_targets = _get_data('val_1', 'a')
+val_features, val_targets = _get_data('val_1', 'b')
 print('val data size', val_features.size())
 print('val target size', val_targets.size())
 val = data_utils.TensorDataset(val_features, val_targets)
@@ -229,7 +231,7 @@ def main():
     if 0:
         model = models.resnet18(pretrained=True)
         num_ftrs = model.fc.in_features
-        model.fc = nn.Linear(num_ftrs, classes_num[1])
+        model.fc = nn.Linear(num_ftrs, sum(classes_num))
         # model.fc.weight.data.normal_(0.0, 0.3)
         # model.fc.bias.data.fill_(0)
         model = torch.nn.DataParallel(model)
@@ -237,13 +239,13 @@ def main():
         model_name = 'resnet18'
 
     if 1:
-        model = models.alexnet(pretrained=True)
+        model = models.alexnet(pretrained=False)
         model.classifier._modules['6'] = nn.Linear(4096, sum(classes_num))
         # model.classifier._modules['6'].weight.data.normal_(0.0, 0.3)
         import torch.nn.init as init
         # init.constant(model.classifier._modules['6'].bias, 0.0)
         model.features = torch.nn.DataParallel(model.features)
-        pretrain = '1'
+        pretrain = '0'
         model_name = 'alexnet'
 
     if args.cuda:

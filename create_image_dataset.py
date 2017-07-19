@@ -36,12 +36,14 @@ def create_dataset(file_path):
         for i in xrange(5):
             for k in xrange(f[f['labeled'][0][i]][0].size):
                 print i,k
-                train_file_path = 'train/id'+str(k+i*1000)+'/'
+                # train_file_path = 'train/id'+str(k+i*1000)+'/'
+                train_file_path = '/data2/hbsun/labeled_detected_cuhk03/train/id'+str(k+i*1000)+'/'
                 train_directory = os.path.dirname(train_file_path)
                 if not os.path.exists(train_directory):
                     os.makedirs(train_directory)
 
-                val_file_path = 'val/id'+str(k+i*1000)+'/'
+                # val_file_path = 'val/id'+str(k+i*1000)+'/'
+                val_file_path = '/data2/hbsun/labeled_detected_cuhk03/val/id'+str(k+i*1000)+'/'
                 val_directory = os.path.dirname(val_file_path)
                 if not os.path.exists(val_directory):
                     os.makedirs(val_directory)
