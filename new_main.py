@@ -52,46 +52,14 @@ torch.manual_seed(args.seed)
 if args.cuda:
     torch.cuda.manual_seed(args.seed)
 
-# get train dataset of one camera pair (pair 1)
-def _get_train_data_of_one_camera_pair(train, group):
-    class_num = [843, 440, 77, 58, 49]
-    with h5py.File('cuhk-03.h5', 'r') as ff:
-        temp = []
-        num_of_same_image_array = []
-        num_sample_total = 0
-        for i in range(class_num[0], class_num[0]+class_num[1]):
-            num_of_same_image = len(ff[group][train][str(i)])
-            num_sample_total += num_of_same_image
-            num_of_same_image_array.append(num_of_same_image)
-            for k in range(num_of_same_image):
-                temp.append(np.array(ff[group][train][str(i)][k]))
-        image_set = np.array(temp)
-        image_id_temp = np.array(ff[group][train+'_id'][str(1)])
-        image_id = []
-        for i in range(class_num[1]):
-            for k in range(num_of_same_image_array[i]):
-                image_id.append(image_id_temp[i])
-        image_id = np.array(image_id)
-
-        data = image_set.transpose(0, 3, 1, 2)
-        features = torch.from_numpy(data)
-
-        transform = transforms.Normalize(mean=[0.367, 0.362, 0.357], std=[0.244, 0.247, 0.249])
-        for j in range(num_sample_total):
-            features[j] = transform(features[j])
-
-        targets = torch.from_numpy(image_id)
-
-        return features, targets
-
 #get train dataset of five camera pairs
 def _get_train_data(train, group):
-    class_num = [843, 440, 77, 58, 49]
     with h5py.File('cuhk-03.h5', 'r') as ff:
+        class_num = len(ff[group][train].keys())
         temp = []
         num_of_same_image_array = []
         num_sample_total = 0
-        for i in range(sum(class_num)):
+        for i in range(class_num):
             num_of_same_image = len(ff[group][train][str(i)])
             num_sample_total += num_of_same_image
             num_of_same_image_array.append(num_of_same_image)
@@ -100,7 +68,7 @@ def _get_train_data(train, group):
         image_set = np.array(temp)
 
         image_id = []
-        for i in range(sum(class_num)):
+        for i in range(class_num):
             for k in range(num_of_same_image_array[i]):
                 image_id.append(i)
         image_id = np.array(image_id)
@@ -115,48 +83,31 @@ def _get_train_data(train, group):
 
         return features, targets
 
-# get validation dataset of one camera pair (pair 1)
-def _get_data_of_one_camera_pair(val_or_test, group):
-    class_num = [843, 440, 77, 58, 49]
-    with h5py.File('cuhk-03.h5','r') as ff:
-        image_set = np.array([ff[group][val_or_test][str(i)][0] for i in range(class_num[0], class_num[0]+class_num[1])])
-        image_id = np.array(ff[group][val_or_test+'_id'][str(1)])
-        data = image_set.transpose(0, 3, 1, 2)
-        features = torch.from_numpy(data)
-        transform = transforms.Normalize(mean=[0.367, 0.362, 0.357], std=[0.244, 0.247, 0.249])
-        for j in range(class_num[1]):
-            features[j] = transform(features[j])
-        targets = torch.from_numpy(image_id)
-        return features, targets
-
 # get validation dataset of five camera pairs
-def _get_data(val_or_test, group):
-    class_num = [843, 440, 77, 58, 49]
+def _get_data(val_or_test):
     with h5py.File('cuhk-03.h5','r') as ff:
-        image_set = np.array([ff[group][val_or_test][str(i)][0] for i in range(sum(class_num))])
-        image_id = np.array([i for i in range(sum(class_num))])
-        data = image_set.transpose(0, 3, 1, 2)
-        features = torch.from_numpy(data)
+        a = np.array([ff['a'][val_or_test][str(i)][0] for i in range(100)])
+        b = np.array([ff['b'][val_or_test][str(i)][0] for i in range(100)])
+        a_trans = a.transpose(0, 3, 1, 2)
+        b_trans = b.transpose(0, 3, 1, 2)
+        camere1 = torch.from_numpy(a_trans)
+        camere2 = torch.from_numpy(b_trans)
         transform = transforms.Normalize(mean=[0.367, 0.362, 0.357], std=[0.244, 0.247, 0.249])
-        for j in range(sum(class_num)):
-            features[j] = transform(features[j])
-        targets = torch.from_numpy(image_id)
-        return features, targets
+        for j in range(100):
+            camere1[j] = transform(camere1[j])
+            camere2[j] = transform(camere2[j])
+        return camere1, camere2
 
-labeled_train_features, labeled_train_targets = _get_train_data('train', 'a')
-detected_train_features, detected_train_targets = _get_train_data('train', 'b')
-train_targets = torch.cat((labeled_train_targets, detected_train_targets), 0)
-train_feature = torch.cat((labeled_train_features, detected_train_features), 0)
+
+camera1_train_features, camera1_train_targets = _get_train_data('train', 'a')
+camera2_train_features, camera2_train_targets = _get_train_data('train', 'b')
+train_feature = torch.cat((camera1_train_features, camera2_train_features), 0)
+train_targets = torch.cat((camera1_train_targets, camera2_train_targets), 0)
 print('train data size', train_features.size())
 print('train target size', train_targets.size())
 train = data_utils.TensorDataset(train_features, train_targets)
 train_loader = data_utils.DataLoader(train, batch_size=args.train_batch_size, shuffle=True)
 
-val_features, val_targets = _get_data('val_1', 'b')
-print('val data size', val_features.size())
-print('val target size', val_targets.size())
-val = data_utils.TensorDataset(val_features, val_targets)
-val_loader = data_utils.DataLoader(val, batch_size=args.test_batch_size, shuffle=True)
 
 
 def train(model, criterion, optimizer, epoch):
@@ -209,88 +160,57 @@ def train(model, criterion, optimizer, epoch):
     print()
     return (losses.avg, top1.avg, top5.avg)
 
-def test(model, criterion, epoch):
-    global best_acc
-    batch_time = AverageMeter()
-    losses = AverageMeter()
-    top1 = AverageMeter()
-    top5 = AverageMeter()
+def cmc(model, val_or_test='test'):
 
-    # switch to evaluate mode
-    model.eval()
-    end = time.time()
-    for batch_idx, (inputs, targets) in enumerate(val_loader):
-        inputs = inputs.float()  # with size of (batch_size * 3 * 224 * 224)
-        targets = targets.long() # with size of (batch_size)
-        if args.cuda:
-            inputs, targets = inputs.cuda(), targets.cuda()
-        inputs, targets = Variable(inputs), Variable(targets)
-        # compute output
-        outputs = model(inputs)
-        loss = criterion(outputs, targets)
-        # measure accuracy and record loss
-        prec1, prec5 = accuracy(outputs.data, targets.data, topk=(1, 5))
-        losses.update(loss.data[0], inputs.size(0))
-        top1.update(prec1[0], inputs.size(0))
-        top5.update(prec5[0], inputs.size(0))
-        # measure elapsed time
-        batch_time.update(time.time() - end)
-        end = time.time()
-        if batch_idx % args.log_interval == 0:
-            print('Test: [{0}/{1}]\t'
-                  'Loss {loss.val:.4f} ({loss.avg:.4f})\t'
-                  'Prec@1 {top1.val:.3f} ({top1.avg:.3f})\t'
-                  'Prec@5 {top5.val:.3f} ({top5.avg:.3f})'.format(
-                   batch_idx, len(val_loader), loss=losses,
-                   top1=top1, top5=top5))
-            print()
-    print('Test batch size: %s' %(args.test_batch_size))
-    print('Top1(test) : {:.3f}%\tTop5(test) : {:.3f}%'.format(
-        top1.avg, top5.avg))
-    print('Test Average Loss: {:.4f}'.format(losses.avg))
-    print()
-    return (losses.avg, top1.avg, top5.avg)
+        a,b = _get_data(val_or_test)
 
+        def _cmc_curve(model, camera1, camera2, rank_max=20):
+            num = camera1.shape[0]  # 100
+            rank = []
+            score = []
+            camera_batch1 = np.zeros(camera1.shape)
+            for i in range(num):
+                for j in range(num):
+                    camera_batch1[j] = camera1[i]
+                feature1_batch = model(camera_batch1) # with size 100 * 4096
+                print(feature1_batch.size())
+                feature2_batch = model(camera2)       # with size 100 * 4096
+                print(feature2_batch.size())
+                pdist = nn.PairwiseDistance(2)
+                dist_batch = pdist(feature1_batch, feature2_batch)  # with size 100 * 1
+                print(dist_batch.size(0))
+                dist_trans = dist_batch.transpose()
+                dist_np = dist_trans.data.numpy()
+                dist_sorted = np.argsort(dist_np)
+                for k in range(num):
+                    if dist_sorted[k] == i:
+                        rank.append(k+1)
+                        break
 
-best_acc = 0  # best test accuracy
+            rank_val = 0
+            for i in range(rank_max):
+                rank_val = rank_val + len([j for j in rank if i == j-1])
+                score.append(rank_val / float(num))
+            return np.array(score)
+
+        return _cmc_curve(model,a,b)
+
 
 def main():
     global best_acc
     if not os.path.isdir(args.checkpoint):
         mkdir_p(args.checkpoint)
 
-
-    model_name = ''
-    pretrain = ''
-    classes_num = [843, 440, 77, 58, 49]
-    if 0:
-        model = models.vgg11(pretrained=True)
-        model.classifier._modules['6'] = nn.Linear(4096, classes_num[1])
-        # model.classifier._modules['6'].weight.data.normal_(0.0, 0.3)
-        # model.classifier._modules['6'].bias.data.zero_()
-        model.features = torch.nn.DataParallel(model.features)
-        pretrain = '1'
-        model_name = 'vgg11'
-
     if 0:
         model = models.resnet18(pretrained=True)
         num_ftrs = model.fc.in_features
         model.fc = nn.Linear(num_ftrs, classes_num[1])
-        # model.fc.weight.data.normal_(0.0, 0.3)
-        # model.fc.bias.data.fill_(0)
         model = torch.nn.DataParallel(model)
-        pretrain = '1'
-        model_name = 'resnet18'
 
     if 1:
         model = models.alexnet(pretrained=True)
         model.classifier._modules['6'] = nn.Linear(4096, sum(classes_num))
-        # model.classifier._modules['6'].weight.data.normal_(0.0, 0.3)
-        import torch.nn.init as init
-        # init.constant(model.classifier._modules['6'].bias, 0.0)
         model.features = torch.nn.DataParallel(model.features)
-        pretrain = '1'
-        model_name = 'alexnet'
 
     if args.cuda:
         model.cuda()
@@ -303,53 +223,28 @@ def main():
 
     title = 'CUHK03-AlexNet'
     date_time = get_datetime()
-    log_filename = 'log-class'+str(sum(classes_num))+'-'+model_name+'-'+pretrain+'-'+date_time+'.txt'
-    logger = Logger(os.path.join(args.checkpoint, log_filename), title=title)
-    logger.set_names(['Learning Rate', 'Train Loss', 'Valid Loss', 'Train Acc.', 'Valid Acc.', 'Train Top5', 'Valid Top5'])
-    # Train and val
+    # Train
     for epoch in range(1, args.epochs + 1):
         lr, optimizer = exp_lr_scheduler(optimizer, epoch)
         print('\nEpoch: [%d | %d] LR: %f' % (epoch, args.epochs, lr))
         print()
         train_loss, train_acc, train_top5 = train(model, criterion, optimizer, epoch)
-        test_loss, test_acc, test_top5 = test(model, criterion, epoch)
 
-        # append logger file
-        logger.append([lr, train_loss, test_loss, train_acc, test_acc, train_top5, test_top5])
-
-        # save model
-        is_best = test_acc > best_acc
-        best_acc = max(test_acc, best_acc)
-        # save_checkpoint({
-        #         'epoch': epoch,
-        #         'state_dict': model.state_dict(),
-        #         'acc': test_acc,
-        #         'best_acc': best_acc,
-        #         'optimizer' : optimizer.state_dict(),
-        #     }, is_best, checkpoint=args.checkpoint)
-
-    logger.close()
-    # logger.plot()
-    # savefig(os.path.join(args.checkpoint, 'log.eps'))
-
-    print('Best test acc: {:.3f}'.format(best_acc))
-
+    # Test
+    model.eval()
+    new_classifier = nn.Sequential(*list(model.classifier.children())[:-1])
+    model.classifier = new_classifier
+    score_array = cmc(model)
+    print(score_array)
 
 def exp_lr_scheduler(optimizer, epoch, init_lr=args.lr, lr_decay_epoch=20):
     """Decay learning rate by a factor of 0.1 every lr_decay_epoch epochs."""
     lr = init_lr * (0.1**(epoch // lr_decay_epoch))
-    # if epoch % lr_decay_epoch == 0:
-        # print('LR is set to {}'.format(lr))
     for param_group in optimizer.param_groups:
         param_group['lr'] = lr
 
     return lr, optimizer
 
-def save_checkpoint(state, is_best, checkpoint='checkpoint', filename='checkpoint.pth.tar'):
-    filepath = os.path.join(checkpoint, filename)
-    torch.save(state, filepath)
-    if is_best:
-        shutil.copyfile(filepath, os.path.join(checkpoint, 'model_best.pth.tar'))
 
 def get_datetime():
     now_datetime = str(datetime.datetime.now())
