@@ -30,8 +30,8 @@ parser.add_argument('--test-batch-size', type=int, default=10, metavar='N',
 parser.add_argument('--epochs', type=int, default=60, metavar='N',
                     help='number of epochs to train (default: 60)')
 # lr=0.1 for resnet, 0.01 for alexnet and vgg
-parser.add_argument('--lr', type=float, default=0.01, metavar='LR',
-                    help='learning rate (default: 0.01)')
+parser.add_argument('--lr', type=float, default=0.1, metavar='LR',
+                    help='learning rate (default: 0.1)')
 parser.add_argument('--momentum', type=float, default=0.005, metavar='M',
                     help='SGD momentum (default: 0.5)')
 parser.add_argument('--weight-decay', '--wd', default=1e-4, type=float,
@@ -56,6 +56,7 @@ if args.cuda:
 def _get_train_data(train, group):
     with h5py.File('cuhk-03.h5', 'r') as ff:
         class_num = len(ff[group][train].keys())
+        print("class number: ", class_num)
         temp = []
         num_of_same_image_array = []
         num_sample_total = 0
@@ -81,39 +82,38 @@ def _get_train_data(train, group):
         for j in range(num_sample_total):
             features[j] = transform(features[j])
 
-        return features, targets
+        return features, targets, class_num
 
 # get validation dataset of five camera pairs
 def _get_data(val_or_test):
     with h5py.File('cuhk-03.h5','r') as ff:
-        a = np.array([ff['a'][val_or_test][str(i)][0] for i in range(100)])
-        b = np.array([ff['b'][val_or_test][str(i)][0] for i in range(100)])
+	num = 100
+        a = np.array([ff['a'][val_or_test][str(i)][1] for i in range(num)])
+        b = np.array([ff['b'][val_or_test][str(i)][1] for i in range(num)])
         a_trans = a.transpose(0, 3, 1, 2)
         b_trans = b.transpose(0, 3, 1, 2)
         camere1 = torch.from_numpy(a_trans)
         camere2 = torch.from_numpy(b_trans)
         transform = transforms.Normalize(mean=[0.367, 0.362, 0.357], std=[0.244, 0.247, 0.249])
-        for j in range(100):
+        for j in range(num):
             camere1[j] = transform(camere1[j])
             camere2[j] = transform(camere2[j])
         return camere1, camere2
 
 
-camera1_train_features, camera1_train_targets = _get_train_data('train', 'a')
-camera2_train_features, camera2_train_targets = _get_train_data('train', 'b')
-train_feature = torch.cat((camera1_train_features, camera2_train_features), 0)
+camera1_train_features, camera1_train_targets, class_num = _get_train_data('train', 'a')
+camera2_train_features, camera2_train_targets, class_num = _get_train_data('train', 'b')
+train_features = torch.cat((camera1_train_features, camera2_train_features), 0)
 train_targets = torch.cat((camera1_train_targets, camera2_train_targets), 0)
 print('train data size', train_features.size())
 print('train target size', train_targets.size())
 train = data_utils.TensorDataset(train_features, train_targets)
 train_loader = data_utils.DataLoader(train, batch_size=args.train_batch_size, shuffle=True)
 
-
-
 def train(model, criterion, optimizer, epoch):
+
     model.train()
-    batch_time = AverageMeter()
-    data_time = AverageMeter()
+
     losses = AverageMeter()
     top1 = AverageMeter()
     top5 = AverageMeter()
@@ -142,9 +142,7 @@ def train(model, criterion, optimizer, epoch):
                 epoch, batch_idx * len(inputs), len(train_loader.dataset),
                 100. * batch_idx / len(train_loader), loss.data[0]))
             print()
-        # measure elapsed time
-        batch_time.update(time.time() - end)
-        end = time.time()
+       
         if batch_idx % args.log_interval == 0:
             print('Epoch: [{0}][{1}/{2}]\t'
                   'Loss {loss.val:.4f}({loss.avg:.4f})\t'
@@ -163,25 +161,41 @@ def train(model, criterion, optimizer, epoch):
 def cmc(model, val_or_test='test'):
 
         a,b = _get_data(val_or_test)
-
+        
+        # camera1 as probe, camera2 as gallery  
         def _cmc_curve(model, camera1, camera2, rank_max=20):
-            num = camera1.shape[0]  # 100
+            num = 100  # 100
             rank = []
             score = []
-            camera_batch1 = np.zeros(camera1.shape)
+            camera_batch1 = camera1
+	    camera1 = camera1.float()
+            camera_batch1 = camera_batch1.float()
+            camera2 = camera2.float()
+            if args.cuda:
+                camera1, camera_batch1, camera2 = camera1.cuda(), camera_batch1.cuda(), camera2.cuda()
+
+            camera1, camera_batch1, camera2 = Variable(camera1), Variable(camera_batch1), Variable(camera2)
+
+            feature2_batch = model(camera2)       # with size 100 * 4096
+
             for i in range(num):
                 for j in range(num):
                     camera_batch1[j] = camera1[i]
+
                 feature1_batch = model(camera_batch1) # with size 100 * 4096
-                print(feature1_batch.size())
-                feature2_batch = model(camera2)       # with size 100 * 4096
-                print(feature2_batch.size())
+                # print(feature1_batch.size())
                 pdist = nn.PairwiseDistance(2)
                 dist_batch = pdist(feature1_batch, feature2_batch)  # with size 100 * 1
-                print(dist_batch.size(0))
-                dist_trans = dist_batch.transpose()
-                dist_np = dist_trans.data.numpy()
+                # print(dist_batch.size())
+                # dist_trans = torch.transpose(dist_batch, 0, 1)
+		# print(dist_trans.size())
+                dist_np = dist_batch.cpu().data.numpy()
+		# print(dist_np.shape)
+		dist_np = np.reshape(dist_np, (num))
+		# print(dist_np.shape)
                 dist_sorted = np.argsort(dist_np)
+		# print(dist_sorted)
+		
                 for k in range(num):
                     if dist_sorted[k] == i:
                         rank.append(k+1)
@@ -201,15 +215,15 @@ def main():
     if not os.path.isdir(args.checkpoint):
         mkdir_p(args.checkpoint)
 
-    if 0:
+    if 1:
         model = models.resnet18(pretrained=True)
         num_ftrs = model.fc.in_features
-        model.fc = nn.Linear(num_ftrs, classes_num[1])
+        model.fc = nn.Linear(num_ftrs, class_num)
         model = torch.nn.DataParallel(model)
 
-    if 1:
+    if 0:
         model = models.alexnet(pretrained=True)
-        model.classifier._modules['6'] = nn.Linear(4096, sum(classes_num))
+        model.classifier._modules['6'] = nn.Linear(4096, class_num)
         model.features = torch.nn.DataParallel(model.features)
 
     if args.cuda:
@@ -232,10 +246,37 @@ def main():
 
     # Test
     model.eval()
-    new_classifier = nn.Sequential(*list(model.classifier.children())[:-1])
-    model.classifier = new_classifier
+    if 1:		
+        num_ftrs = model.fc.in_features
+	print(num_ftrs)
+	model.fc = ''
+    	torch.save(model, 'resnet_trained.pth')
+    if 0:
+        new_classifier = nn.Sequential(*list(model.classifier.children())[:-1])
+        model.classifier = new_classifier
+        # model.features = torch.nn.DataParallel(model.features)
+    	torch.save(model, 'alexnet_trained.pth')
+
+
     score_array = cmc(model)
     print(score_array)
+    
+    print('Top1(accuracy) : {:.3f}\t''Top5(accuracy) : {:.3f}'.format(
+        score_array[0], score_array[4]))
+
+def use_trained_model():
+
+    if 1:
+    	model = torch.load('resnet_trained.pth')
+    if 0:    
+    	model = torch.load('alexnet_trained.pth')    
+    
+    score_array = cmc(model)
+    print(score_array)
+    
+    print('Top1(accuracy) : {:.3f}\t''Top5(accuracy) : {:.3f}'.format(
+        score_array[0], score_array[4]))
+
 
 def exp_lr_scheduler(optimizer, epoch, init_lr=args.lr, lr_decay_epoch=20):
     """Decay learning rate by a factor of 0.1 every lr_decay_epoch epochs."""
@@ -257,3 +298,4 @@ def get_datetime():
 
 if __name__ == '__main__':
     main()
+    # use_trained_model()
