@@ -141,7 +141,7 @@ def train(train_loader, model, criterion, optimizer, epoch):
                 epoch, batch_idx * len(inputs), len(train_loader.dataset),
                 100. * batch_idx / len(train_loader), loss.data[0]))
             print()
-       
+
         if batch_idx % args.log_interval == 0:
             print('Epoch: [{0}][{1}/{2}]\t'
                   'Loss {loss.val:.4f}({loss.avg:.4f})\t'
@@ -160,8 +160,8 @@ def train(train_loader, model, criterion, optimizer, epoch):
 def cmc(model, val_or_test='test'):
 
         a,b = _get_data(val_or_test)
-        
-        # camera1 as probe, camera2 as gallery  
+
+        # camera1 as probe, camera2 as gallery
         def _cmc_curve(model, camera1, camera2, rank_max=20):
             # num = 100  # 100
             num1 = 100  # camera1
@@ -170,7 +170,7 @@ def cmc(model, val_or_test='test'):
             score = []
             # camera_batch1 = camera1
             camera_batch1 = camera2
-	    camera1 = camera1.float()
+            camera1 = camera1.float()
             camera_batch1 = camera_batch1.float()
             camera2 = camera2.float()
             if args.cuda:
@@ -185,20 +185,19 @@ def cmc(model, val_or_test='test'):
                     camera_batch1[j] = camera1[i]
 
                 feature1_batch = model(camera_batch1) # with size 100 * 4096
-             
+
                 pdist = nn.PairwiseDistance(2)
                 dist_batch = pdist(feature1_batch, feature2_batch)  # with size 100 * 1
-                
+
                 dist_np = dist_batch.cpu().data.numpy()
-		
-		# dist_np = np.reshape(dist_np, (num))
-		dist_np = np.reshape(dist_np, (num2))
-	
+
+        		# dist_np = np.reshape(dist_np, (num))
+        		dist_np = np.reshape(dist_np, (num2))
+
                 dist_sorted = np.argsort(dist_np)
-		if i < 30:
-		    print(dist_sorted[:10])
-	
-		
+        		if i < 30:
+        		    print(dist_sorted[:10])
+
                 # for k in range(num):
                 for k in range(num2):
                     if dist_sorted[k] == i:
@@ -225,7 +224,7 @@ def main():
     print('train target size', train_targets.size())
     train = data_utils.TensorDataset(train_features, train_targets)
     train_loader = data_utils.DataLoader(train, batch_size=args.train_batch_size, shuffle=True)
-  
+
     if not os.path.isdir(args.checkpoint):
         mkdir_p(args.checkpoint)
 
@@ -260,8 +259,8 @@ def main():
 
     # Test
     model.eval()
-    if 1:		
-	model.fc = ''
+    if 1:
+        model.fc = ''
         # model = torch.nn.DataParallel(model)
     	torch.save(model, 'resnet_trained.pth')
     if 0:
@@ -273,7 +272,7 @@ def main():
 
     score_array = cmc(model)
     print(score_array)
-    
+
     print('Top1(accuracy) : {:.3f}\t''Top5(accuracy) : {:.3f}'.format(
         score_array[0], score_array[4]))
 
@@ -281,12 +280,12 @@ def use_trained_model():
 
     if 1:
     	model = torch.load('resnet_trained.pth')
-    if 0:    
-    	model = torch.load('alexnet_trained.pth')    
-    
+    if 0:
+    	model = torch.load('alexnet_trained.pth')
+
     score_array = cmc(model)
     print(score_array)
-    
+
     print('Top1(accuracy) : {:.3f}\t''Top5(accuracy) : {:.3f}'.format(
         score_array[0], score_array[4]))
 
