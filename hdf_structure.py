@@ -11,8 +11,8 @@ def print_hdf5_file_structure(file_name) :
     """Prints the HDF5 file structure"""
     file = h5py.File(file_name, 'r') # open read-only
     item = file #["/Configure:0000/Run:0000"]
-    list0 = ['train', 'val', 'train_id', 'val_id']
-    list1 = ['val', 'val_id']
+    list0 = ['train', 'validation', 'test']
+    list1 = ['train', 'validation', 'test']
     for train_or_validation in list0:
         length = len(item['a'][train_or_validation].keys())
         print('length of %s dataset: %d' %(train_or_validation, length))
