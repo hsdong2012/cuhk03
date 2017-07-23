@@ -23,15 +23,15 @@ from utils import Logger, AverageMeter, accuracy, mkdir_p, savefig
 
 # Training settings
 parser = argparse.ArgumentParser(description='PyTorch CUHK03 Example')
-parser.add_argument('--train-batch-size', type=int, default=18, metavar='N',
-                    help='input batch size for training (default: 18)')
+parser.add_argument('--train-batch-size', type=int, default=24, metavar='N',
+                    help='input batch size for training (default: 24)')
 parser.add_argument('--test-batch-size', type=int, default=10, metavar='N',
                     help='input batch size for testing (default: 10)')
 parser.add_argument('--epochs', type=int, default=60, metavar='N',
                     help='number of epochs to train (default: 60)')
 # lr=0.1 for resnet, 0.01 for alexnet and vgg
-parser.add_argument('--lr', type=float, default=0.1, metavar='LR',
-                    help='learning rate (default: 0.1)')
+parser.add_argument('--lr', type=float, default=0.01, metavar='LR',
+                    help='learning rate (default: 0.01)')
 parser.add_argument('--momentum', type=float, default=0.005, metavar='M',
                     help='SGD momentum (default: 0.5)')
 parser.add_argument('--weight-decay', '--wd', default=1e-4, type=float,
@@ -54,14 +54,14 @@ if args.cuda:
 
 
 # get triplet dataset
-def _get_triplet_data(group, train):
+def _get_triplet_data(train):
     with h5py.File('cuhk-03.h5','r') as ff:
-        class_num = len(ff[group][train].keys())
-        a = np.array([ff['a'][train][str(i)][0] for i in range(class_num)])
+        class_num = 800
+        a = np.array([ff['a']['train'][str(i)][0] for i in range(class_num)])
         a_label = np.array([i for i in range(class_num)])
         b = np.array([ff['b'][train][str(i)][0] for i in range(class_num)])
         b_label = np.array([i for i in range(class_num)])
-        c = np.array([ff['b'][train][str(i)][1] for i in reversed(range(class_num))])
+        c = np.array([ff['a'][train][str(i)][0] for i in reversed(range(class_num))])
         c_label = np.array([i for i in reversed(range(class_num))])
     	a_trans = a.transpose(0, 3, 1, 2)
     	b_trans = b.transpose(0, 3, 1, 2)
@@ -76,7 +76,9 @@ def _get_triplet_data(group, train):
             label.append(b_label[i])
             label.append(c_label[i])
 
-    	triplet_dataset = torch.from_numpy(dataset)
+    	dataset = np.array(dataset)
+	label = np.array(label)
+	triplet_dataset = torch.from_numpy(dataset)
     	triplet_label = torch.from_numpy(label)
 
         transform = transforms.Normalize(mean=[0.367, 0.362, 0.357], std=[0.244, 0.247, 0.249])
@@ -111,7 +113,7 @@ def _get_data(val_or_test):
 
 
 
-def train(train_loader, model, criterion, optimizer, epoch):
+def train_model(train_loader, model, criterion, optimizer, epoch):
 
     model.train()
 
@@ -121,9 +123,11 @@ def train(train_loader, model, criterion, optimizer, epoch):
     end = time.time()
     for batch_idx, (inputs, targets) in enumerate(train_loader):
         pair_num = args.train_batch_size / 3
-        anchor = torch.FloatTensor(pair_num, inputs.size(1), inputs.size(2), inputs,size(3)).zero_()
-        positive = torch.FloatTensor(pair_num, inputs.size(1), inputs.size(2), inputs,size(3)).zero_()
-        negative = torch.FloatTensor(pair_num, inputs.size(1), inputs.size(2), inputs,size(3)).zero_()
+	# print(inputs.size())
+	# print(pair_num)
+        anchor = torch.FloatTensor(pair_num, inputs.size(1), inputs.size(2), inputs.size(3)).zero_()
+        positive = torch.FloatTensor(pair_num, inputs.size(1), inputs.size(2), inputs.size(3)).zero_()
+        negative = torch.FloatTensor(pair_num, inputs.size(1), inputs.size(2), inputs.size(3)).zero_()
         for i in range(pair_num):
             anchor[i] = inputs[3*i]
             positive[i] = inputs[3*i+1]
@@ -152,7 +156,7 @@ def train(train_loader, model, criterion, optimizer, epoch):
                 100. * batch_idx / len(train_loader), loss.data[0]))
             print()
 
-    return losses.avg
+
 
 def cmc(model, val_or_test='test'):
 
@@ -180,11 +184,11 @@ def cmc(model, val_or_test='test'):
             pdist = nn.PairwiseDistance(2)
             dist_batch = pdist(feature1_batch, feature2_batch)  # with size 100 * 1
             dist_np = dist_batch.cpu().data.numpy()
-    		# dist_np = np.reshape(dist_np, (num))
-    		dist_np = np.reshape(dist_np, (num2))
+    	    # dist_np = np.reshape(dist_np, (num))
+    	    dist_np = np.reshape(dist_np, (num2))
             dist_sorted = np.argsort(dist_np)
-    		if i < 30:
-    		    print(dist_sorted[:10])
+    	    if i < 30:
+		print(dist_sorted[:10])
             # for k in range(num):
             for k in range(num2):
                 if dist_sorted[k] == i:
@@ -204,19 +208,19 @@ def main():
     triplet_dataset, triplet_label, class_num = _get_triplet_data('train')
     print('train data size', triplet_dataset.size())
     print('train target size', triplet_label.size())
-    train = data_utils.TensorDataset(triplet_dataset, triplet_label)
-    train_loader = data_utils.DataLoader(train, batch_size=args.train_batch_size, shuffle=True)
+    train_data = data_utils.TensorDataset(triplet_dataset, triplet_label)
+    train_loader = data_utils.DataLoader(train_data, batch_size=args.train_batch_size, shuffle=True)
 
     if not os.path.isdir(args.checkpoint):
         mkdir_p(args.checkpoint)
 
-    if 1:
+    if 0:
         model = models.resnet18(pretrained=True)
         num_ftrs = model.fc.in_features
         model.fc = nn.Linear(num_ftrs, class_num)
         model = torch.nn.DataParallel(model)
 
-    if 0:
+    if 1:
         model = models.alexnet(pretrained=True)
         model.classifier._modules['6'] = nn.Linear(4096, class_num)
         model.features = torch.nn.DataParallel(model.features)
@@ -226,9 +230,9 @@ def main():
     cudnn.benchmark = True
 
     optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum, weight_decay=args.weight_decay)
-    criterion = nn.TripletMarginLoss()
+    criterion = nn.TripletMarginLoss(margin=1.0, p=2)
     if args.cuda:
-        criterion = nn.CrossEntropyLoss().cuda()
+        criterion = nn.TripletMarginLoss(margin=1.0, p=2).cuda()
 
     title = 'CUHK03-AlexNet'
     date_time = get_datetime()
@@ -237,15 +241,15 @@ def main():
         lr, optimizer = exp_lr_scheduler(optimizer, epoch)
         print('\nEpoch: [%d | %d] LR: %f' % (epoch, args.epochs, lr))
         print()
-        train_loss = train(train_loader, model, criterion, optimizer, epoch)
+        train_model(train_loader, model, criterion, optimizer, epoch)
 
     # Test
     model.eval()
-    if 1:
+    if 0:
         model.fc = ''
         # model = torch.nn.DataParallel(model)
     	torch.save(model, 'triplet_resnet_trained.pth')
-    if 0:
+    if 1:
         new_classifier = nn.Sequential(*list(model.classifier.children())[:-1])
         model.classifier = new_classifier
         # model.features = torch.nn.DataParallel(model.features)
@@ -260,9 +264,9 @@ def main():
 
 def use_trained_model():
 
-    if 1:
-    	model = torch.load('triplet_resnet_trained.pth')
     if 0:
+    	model = torch.load('triplet_resnet_trained.pth')
+    if 1:
     	model = torch.load('triplet_alexnet_trained.pth')
 
     score_array = cmc(model)

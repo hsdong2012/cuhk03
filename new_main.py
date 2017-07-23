@@ -191,12 +191,12 @@ def cmc(model, val_or_test='test'):
 
                 dist_np = dist_batch.cpu().data.numpy()
 
-        		# dist_np = np.reshape(dist_np, (num))
-        		dist_np = np.reshape(dist_np, (num2))
+        	# dist_np = np.reshape(dist_np, (num))
+        	dist_np = np.reshape(dist_np, (num2))
 
                 dist_sorted = np.argsort(dist_np)
-        		if i < 30:
-        		    print(dist_sorted[:10])
+        	if i < 30:
+        	    print(dist_sorted[:10])
 
                 # for k in range(num):
                 for k in range(num2):
