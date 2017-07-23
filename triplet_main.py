@@ -63,8 +63,8 @@ def _get_triplet_data(train):
         b_label = np.array([i for i in range(class_num)])
         c = np.array([ff['a'][train][str(i)][0] for i in reversed(range(class_num))])
         c_label = np.array([i for i in reversed(range(class_num))])
-    	a_trans = a.transpose(0, 3, 1, 2)
-    	b_trans = b.transpose(0, 3, 1, 2)
+        a_trans = a.transpose(0, 3, 1, 2)
+        b_trans = b.transpose(0, 3, 1, 2)
         c_trans = c.transpose(0, 3, 1, 2)
         dataset = []
         label = []
@@ -76,10 +76,10 @@ def _get_triplet_data(train):
             label.append(b_label[i])
             label.append(c_label[i])
 
-    	dataset = np.array(dataset)
-	label = np.array(label)
-	triplet_dataset = torch.from_numpy(dataset)
-    	triplet_label = torch.from_numpy(label)
+        dataset = np.array(dataset)
+        label = np.array(label)
+        triplet_dataset = torch.from_numpy(dataset)
+        triplet_label = torch.from_numpy(label)
 
         transform = transforms.Normalize(mean=[0.367, 0.362, 0.357], std=[0.244, 0.247, 0.249])
         for j in range(class_num*3):
@@ -117,14 +117,10 @@ def train_model(train_loader, model, criterion, optimizer, epoch):
 
     model.train()
 
-    losses = AverageMeter()
-    top1 = AverageMeter()
-    top5 = AverageMeter()
-    end = time.time()
     for batch_idx, (inputs, targets) in enumerate(train_loader):
         pair_num = args.train_batch_size / 3
-	# print(inputs.size())
-	# print(pair_num)
+        # print(inputs.size())
+        # print(pair_num)
         anchor = torch.FloatTensor(pair_num, inputs.size(1), inputs.size(2), inputs.size(3)).zero_()
         positive = torch.FloatTensor(pair_num, inputs.size(1), inputs.size(2), inputs.size(3)).zero_()
         negative = torch.FloatTensor(pair_num, inputs.size(1), inputs.size(2), inputs.size(3)).zero_()
@@ -145,7 +141,6 @@ def train_model(train_loader, model, criterion, optimizer, epoch):
         outputs2 = model(positive)
         outputs3 = model(negative)
         loss = criterion(outputs1, outputs2, outputs3)
-
         # compute gradient and do SGD step
         optimizer.zero_grad()
         loss.backward()
@@ -188,7 +183,7 @@ def cmc(model, val_or_test='test'):
     	    dist_np = np.reshape(dist_np, (num2))
             dist_sorted = np.argsort(dist_np)
     	    if i < 30:
-		print(dist_sorted[:10])
+                print(dist_sorted[:10])
             # for k in range(num):
             for k in range(num2):
                 if dist_sorted[k] == i:
@@ -200,8 +195,27 @@ def cmc(model, val_or_test='test'):
             # score.append(rank_val / float(num))
             score.append(rank_val / float(num1))
         return np.array(score)
+
     return _cmc_curve(model,a,b)
 
+
+original_model = models.alexnet(pretrained=True)
+
+class AlexNetNoClassifier(nn.Module):
+            def __init__(self):
+                super(AlexNetConv4, self).__init__()
+                self.features = nn.Sequential(
+                    *list(original_model.features.children())[:]
+                )
+            def forward(self, x):
+                x = self.features(x)
+                x = x.view(x.size(0), 256 * 6 * 6)
+                return x
+
+new_model = AlexNetNoClassifier()
+new_model = torch.nn.DataParallel(new_model)
+if args.cuda:
+    new_model.cuda()
 
 def main():
 
@@ -211,22 +225,6 @@ def main():
     train_data = data_utils.TensorDataset(triplet_dataset, triplet_label)
     train_loader = data_utils.DataLoader(train_data, batch_size=args.train_batch_size, shuffle=True)
 
-    if not os.path.isdir(args.checkpoint):
-        mkdir_p(args.checkpoint)
-
-    if 0:
-        model = models.resnet18(pretrained=True)
-        num_ftrs = model.fc.in_features
-        model.fc = nn.Linear(num_ftrs, class_num)
-        model = torch.nn.DataParallel(model)
-
-    if 1:
-        model = models.alexnet(pretrained=True)
-        model.classifier._modules['6'] = nn.Linear(4096, class_num)
-        model.features = torch.nn.DataParallel(model.features)
-
-    if args.cuda:
-        model.cuda()
     cudnn.benchmark = True
 
     optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum, weight_decay=args.weight_decay)
@@ -241,20 +239,12 @@ def main():
         lr, optimizer = exp_lr_scheduler(optimizer, epoch)
         print('\nEpoch: [%d | %d] LR: %f' % (epoch, args.epochs, lr))
         print()
-        train_model(train_loader, model, criterion, optimizer, epoch)
+        train_model(train_loader, new_model, criterion, optimizer, epoch)
 
     # Test
     model.eval()
-    if 0:
-        model.fc = ''
-        # model = torch.nn.DataParallel(model)
-    	torch.save(model, 'triplet_resnet_trained.pth')
-    if 1:
-        new_classifier = nn.Sequential(*list(model.classifier.children())[:-1])
-        model.classifier = new_classifier
-        # model.features = torch.nn.DataParallel(model.features)
-    	torch.save(model, 'triplet_alexnet_trained.pth')
 
+    torch.save(model, 'triplet_alexnet_trained.pth')
 
     score_array = cmc(model)
     print(score_array)
@@ -264,10 +254,7 @@ def main():
 
 def use_trained_model():
 
-    if 0:
-    	model = torch.load('triplet_resnet_trained.pth')
-    if 1:
-    	model = torch.load('triplet_alexnet_trained.pth')
+    model = torch.load('triplet_alexnet_trained.pth')
 
     score_array = cmc(model)
     print(score_array)
