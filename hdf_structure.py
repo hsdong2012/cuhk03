@@ -48,5 +48,5 @@ def print_hdf5_item_structure(g, offset='    ') :
             print_hdf5_item_structure(subg, offset + '    ')
 
 if __name__ == "__main__" :
-    print_hdf5_file_structure('cuhk-03.h5')
+    print_hdf5_file_structure('triplet-cuhk-03.h5')
     sys.exit ( "End of test" )

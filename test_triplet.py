@@ -18,16 +18,21 @@ def range_except_k(n, end, start = 0):
     return range(start, n) + range(n+1, end)
 
 def _get_triplet_data():
-    with h5py.File('triplet-cuhk-03.h5', r) as ff:
+    with h5py.File('triplet-cuhk-03.h5', 'r') as ff:
         class_num = len(ff['a']['train'].keys())
         temp_a = []
         temp_b = []
         temp_id = []
         for i in range(class_num):
-            for k in range(5):
-                temp_id.append(i)
-                temp_a.append(np.array(ff['a']['train'][str(i)][k]))
-                temp_b.append(np.array(ff['b']['train'][str(i)][k]))
+	    len1 = len(ff['a']['train'][str(i)])
+	    len2 = len(ff['b']['train'][str(i)])
+	    if len1 < 5 or len2 < 5:
+		class_num -= 1
+	    if len1 >= 5 and len2 >= 5:
+                for k in range(5):
+                    temp_id.append(i)
+                    temp_a.append(np.array(ff['a']['train'][str(i)][k]))
+                    temp_b.append(np.array(ff['b']['train'][str(i)][k]))
 
         imageset_a = np.array(temp_a)
         imageset_b = np.array(temp_b)
@@ -43,16 +48,19 @@ def _get_triplet_data():
 
         camera1_dataset = a_tensor.resize_(class_num, 5, a_tensor.size(1), a_tensor.size(2), a_tensor.size(3))
         camera2_dataset = b_tensor.resize_(class_num, 5, b_tensor.size(1), b_tensor.size(2), b_tensor.size(3))
-
+	
+	print(camera1_dataset.size())
         pair_num = 10000
-        triplet_temp = torch.FloatTensor(pair_num, 3, a_tensor.size(1), a_tensor.size(2), a_tensor.size(3)).zero_()
+        triplet_temp = torch.FloatTensor(pair_num, 3, camera1_dataset.size(2), camera1_dataset.size(3), camera1_dataset.size(3)).zero_()
         triplet_id_temp = torch.LongTensor(pair_num, 3)
+	print(triplet_temp.size())
         for i in range(pair_num):
-            k = random.randint(0, class_num)
-            k1 = range_except_k(k, class_num)
-            j0 = random.randint(0, 5)
-            j1 = random.randint(0, 5)
-            j2 = random.randint(0, 5)
+            k = random.randint(0, class_num-1)
+            range_no_k = range_except_k(k, class_num)
+	    k1 = random.choice(range_no_k)
+            j0 = random.randint(0, 4)
+            j1 = random.randint(0, 4)
+            j2 = random.randint(0, 4)
             triplet_temp[i][0] = camera1_dataset[k][j0]
             triplet_id_temp[i][0] = k
             triplet_temp[i][1] = camera2_dataset[k][j1]
