@@ -31,8 +31,8 @@ parser.add_argument('--test-batch-size', type=int, default=10, metavar='N',
 parser.add_argument('--epochs', type=int, default=60, metavar='N',
                     help='number of epochs to train (default: 60)')
 # lr=0.1 for resnet, 0.01 for alexnet and vgg
-parser.add_argument('--lr', type=float, default=0.005, metavar='LR',
-                    help='learning rate (default: 0.005)')
+parser.add_argument('--lr', type=float, default=0.01, metavar='LR',
+                    help='learning rate (default: 0.01)')
 parser.add_argument('--momentum', type=float, default=0.005, metavar='M',
                     help='SGD momentum (default: 0.5)')
 parser.add_argument('--weight-decay', '--wd', default=1e-4, type=float,
@@ -65,8 +65,8 @@ def _get_triplet_data():
         temp_b = []
         temp_id = []
         for i in range(class_num):
-	        len1 = len(ff['a']['train'][str(i)])
-	        len2 = len(ff['b']['train'][str(i)])
+	    len1 = len(ff['a']['train'][str(i)])
+	    len2 = len(ff['b']['train'][str(i)])
             if len1 < 5 or len2 < 5:
                 class_num -= 1
             if len1 >= 5 and len2 >= 5:
@@ -90,7 +90,7 @@ def _get_triplet_data():
         camera1_dataset = a_tensor.resize_(class_num, 5, a_tensor.size(1), a_tensor.size(2), a_tensor.size(3))
         camera2_dataset = b_tensor.resize_(class_num, 5, b_tensor.size(1), b_tensor.size(2), b_tensor.size(3))
 
-        pair_num = 10000
+        pair_num = 1000
         triplet_temp = torch.FloatTensor(pair_num, 3, camera1_dataset.size(2), camera1_dataset.size(3), camera1_dataset.size(3)).zero_()
         triplet_id_temp = torch.LongTensor(pair_num, 3)
 
@@ -138,7 +138,6 @@ def _get_data(val_or_test):
         return (camere1, camere2)
 
 
-
 def train_model(train_loader, model, criterion, optimizer, epoch):
 
     model.train()
@@ -149,23 +148,45 @@ def train_model(train_loader, model, criterion, optimizer, epoch):
         anchor = triplet_pair[0].resize_(args.train_batch_size, inputs.size(2), inputs.size(3), inputs.size(4))
         positive = triplet_pair[1].resize_(args.train_batch_size, inputs.size(2), inputs.size(3), inputs.size(4))
         negative = triplet_pair[2].resize_(args.train_batch_size, inputs.size(2), inputs.size(3), inputs.size(4))
+	
+	triplet_label_pair = torch.split(targets, 1, 1)
+	anchor_label = triplet_label_pair[0].resize_(args.train_batch_size)
+	positive_label = triplet_label_pair[1].resize_(args.train_batch_size)
+	negative_label = triplet_label_pair[2].resize_(args.train_batch_size)
 
-        anchor = anchor.float()  # with size of (batch_size/3 * 3 * 224 * 224)
+        anchor = anchor.float()  # with size of (batch_size * 3 * 224 * 224)
         positive = positive.float()
         negative = negative.float()
+	anchor_label.long()
+	positive_label.long()
+	negative_label.long()
         if args.cuda:
             anchor, positive, negative = anchor.cuda(), positive.cuda(), negative.cuda()
         anchor, positive, negative = Variable(anchor), Variable(positive), Variable(negative)
-        optimizer.zero_grad()
+        if args.cuda:
+            anchor_label, positive_label, negative_label = anchor_label.cuda(), positive_label.cuda(), negative_label.cuda()
+        anchor_label, positive_label, negative_label = Variable(anchor_label), Variable(positive_label), Variable(negative_label)
+        
+	if 0:
+	    print(anchor[0])
+	    print(positive[0])
+	    print(negative[0])
         # compute output
-        outputs1 = model(anchor)
-        # print('anchor: ', anchor.size())
-        # print('output11: ', outputs1.size())
-        outputs2 = model(positive)
-        outputs3 = model(negative)
+        outputs1, outputs2, outputs3 = model(anchor), model(positive), model(negative)
+        # print('anchor size: ', anchor.size())
+        # print('output11 size: ', outputs1.size())
+	
+	if batch_idx == 40:
+	    print(outputs1)
+	    print(outputs2)
+	    print(outputs3)
+	    sys.exit('exit')
         loss = criterion(outputs1, outputs2, outputs3)
+	# print(loss.data)
+	# sys.exit('exit')
+
         # compute gradient and do SGD step
-        optimizer.zero_grad()
+	optimizer.zero_grad()
         loss.backward()
         optimizer.step()
         if batch_idx % args.log_interval == 0:
@@ -225,15 +246,16 @@ def cmc(model, val_or_test='test'):
 original_model = models.alexnet(pretrained=True)
 
 class AlexNetNoClassifier(nn.Module):
-            def __init__(self):
-                super(AlexNetNoClassifier, self).__init__()
-                self.features = nn.Sequential(
-                    *list(original_model.features.children())[:]
-                )
-            def forward(self, x):
-                x = self.features(x)
-                x = x.view(x.size(0), 256 * 6 * 6)
-                return x
+    def __init__(self):
+        super(AlexNetNoClassifier, self).__init__()
+        self.features = nn.Sequential(
+            *list(original_model.features.children())[:]
+            # *list(original_model.features.children())
+        )
+    def forward(self, x):
+        x = self.features(x)
+        x = x.view(x.size(0), 256 * 6 * 6)
+        return x
 
 new_model = AlexNetNoClassifier()
 new_model = torch.nn.DataParallel(new_model)
@@ -242,7 +264,7 @@ if args.cuda:
 
 def main():
 
-    triplet_dataset, triplet_label, class_num = _get_triplet_data('train')
+    triplet_dataset, triplet_label = _get_triplet_data()
     print('train data  size: ', triplet_dataset.size())
     print('train target size', triplet_label.size())
     train_data = data_utils.TensorDataset(triplet_dataset, triplet_label)
