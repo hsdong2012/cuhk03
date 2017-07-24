@@ -6,6 +6,7 @@ import os
 import time
 import datetime
 import shutil
+import random
 import numpy as np
 import torch
 from torchvision import datasets, transforms
@@ -54,46 +55,63 @@ if args.cuda:
 
 
 # get triplet dataset
-def _get_triplet_data(train):
-    with h5py.File('cuhk-03.h5','r') as ff:
-        class_num = 1000
-        a = np.array([ff['a']['train'][str(i)][0] for i in range(class_num)])
-        a_label = np.array([i for i in range(class_num)])
-        b = np.array([ff['b'][train][str(i)][0] for i in range(class_num)])
-        b_label = np.array([i for i in range(class_num)])
-        c = np.array([ff['b'][train][str(i)][0] for i in reversed(range(class_num))])
-        c_label = np.array([i for i in reversed(range(class_num))])
-        a_trans = a.transpose(0, 3, 1, 2)
-        b_trans = b.transpose(0, 3, 1, 2)
-        c_trans = c.transpose(0, 3, 1, 2)
-        dataset = []
-        label = []
-        for i in range(class_num):
-            dataset.append(a_trans[i])
-            dataset.append(b_trans[i])
-            dataset.append(c_trans[i])
-            label.append(a_label[i])
-            label.append(b_label[i])
-            label.append(c_label[i])
+def range_except_k(n, end, start = 0):
+    return range(start, n) + range(n+1, end)
 
-        dataset = np.array(dataset)
-        label = np.array(label)
-        tensor_dataset = torch.from_numpy(dataset)
-        tensor_label = torch.from_numpy(label)
+def _get_triplet_data():
+    with h5py.File('triplet-cuhk-03.h5', 'r') as ff:
+        class_num = len(ff['a']['train'].keys())
+        temp_a = []
+        temp_b = []
+        temp_id = []
+        for i in range(class_num):
+	        len1 = len(ff['a']['train'][str(i)])
+	        len2 = len(ff['b']['train'][str(i)])
+            if len1 < 5 or len2 < 5:
+                class_num -= 1
+            if len1 >= 5 and len2 >= 5:
+                for k in range(5):
+                    temp_id.append(i)
+                    temp_a.append(np.array(ff['a']['train'][str(i)][k]))
+                    temp_b.append(np.array(ff['b']['train'][str(i)][k]))
+
+        imageset_a = np.array(temp_a)
+        imageset_b = np.array(temp_b)
+        a_trans = imageset_a.transpose(0, 3, 1, 2)
+        b_trans = imageset_b.transpose(0, 3, 1, 2)
+        a_tensor = torch.from_numpy(a_trans)
+        b_tensor = torch.from_numpy(b_trans)
 
         transform = transforms.Normalize(mean=[0.367, 0.362, 0.357], std=[0.244, 0.247, 0.249])
-        for j in range(class_num*3):
-            tensor_dataset[j] = transform(tensor_dataset[j])
-	
-	# print(tensor_dataset.size())
-	
-	triplet_dataset = tensor_dataset.resize_(class_num, 3, tensor_dataset.size(1), tensor_dataset.size(2), tensor_dataset.size(3))
+        for j in range(class_num*5):
+            a_tensor[j] = transform(a_tensor[j])
+            b_tensor[j] = transform(b_tensor[j])
 
-	# print('triplet_dataset size: ', triplet_dataset.size())	
+        camera1_dataset = a_tensor.resize_(class_num, 5, a_tensor.size(1), a_tensor.size(2), a_tensor.size(3))
+        camera2_dataset = b_tensor.resize_(class_num, 5, b_tensor.size(1), b_tensor.size(2), b_tensor.size(3))
 
-	triplet_label = tensor_label.resize_(class_num, 3) 
+        pair_num = 10000
+        triplet_temp = torch.FloatTensor(pair_num, 3, camera1_dataset.size(2), camera1_dataset.size(3), camera1_dataset.size(3)).zero_()
+        triplet_id_temp = torch.LongTensor(pair_num, 3)
 
-        return (triplet_dataset, triplet_label, class_num)
+        for i in range(pair_num):
+            k = random.randint(0, class_num-1)
+            range_no_k = range_except_k(k, class_num)
+            k1 = random.choice(range_no_k)
+            j0 = random.randint(0, 4)
+            j1 = random.randint(0, 4)
+            j2 = random.randint(0, 4)
+            triplet_temp[i][0] = camera1_dataset[k][j0]
+            triplet_id_temp[i][0] = k
+            triplet_temp[i][1] = camera2_dataset[k][j1]
+            triplet_id_temp[i][1] = k
+            triplet_temp[i][2] = camera1_dataset[k1][j2]
+            triplet_id_temp[i][2] = k1
+
+        triplet_dataset = triplet_temp
+        triplet_label = triplet_id_temp
+
+        return triplet_dataset, triplet_label
 
 
 # get validation dataset of five camera pairs
@@ -126,13 +144,12 @@ def train_model(train_loader, model, criterion, optimizer, epoch):
     model.train()
 
     for batch_idx, (inputs, targets) in enumerate(train_loader):
- 
 
-	triplet_pair = torch.split(inputs, 1, 1)
-	anchor = triplet_pair[0].resize_(args.train_batch_size, inputs.size(2), inputs.size(3), inputs.size(4))
-	positive = triplet_pair[1].resize_(args.train_batch_size, inputs.size(2), inputs.size(3), inputs.size(4))
-	negative = triplet_pair[2].resize_(args.train_batch_size, inputs.size(2), inputs.size(3), inputs.size(4))
-	
+        triplet_pair = torch.split(inputs, 1, 1)
+        anchor = triplet_pair[0].resize_(args.train_batch_size, inputs.size(2), inputs.size(3), inputs.size(4))
+        positive = triplet_pair[1].resize_(args.train_batch_size, inputs.size(2), inputs.size(3), inputs.size(4))
+        negative = triplet_pair[2].resize_(args.train_batch_size, inputs.size(2), inputs.size(3), inputs.size(4))
+
         anchor = anchor.float()  # with size of (batch_size/3 * 3 * 224 * 224)
         positive = positive.float()
         negative = negative.float()
@@ -142,8 +159,8 @@ def train_model(train_loader, model, criterion, optimizer, epoch):
         optimizer.zero_grad()
         # compute output
         outputs1 = model(anchor)
-	# print('anchor: ', anchor.size())
-	# print('output11: ', outputs1.size())
+        # print('anchor: ', anchor.size())
+        # print('output11: ', outputs1.size())
         outputs2 = model(positive)
         outputs3 = model(negative)
         loss = criterion(outputs1, outputs2, outputs3)
@@ -185,10 +202,10 @@ def cmc(model, val_or_test='test'):
             pdist = nn.PairwiseDistance(2)
             dist_batch = pdist(feature1_batch, feature2_batch)  # with size 100 * 1
             dist_np = dist_batch.cpu().data.numpy()
-    	    # dist_np = np.reshape(dist_np, (num))
-    	    dist_np = np.reshape(dist_np, (num2))
+            # dist_np = np.reshape(dist_np, (num))
+            dist_np = np.reshape(dist_np, (num2))
             dist_sorted = np.argsort(dist_np)
-    	    if i < 30:
+            if i < 30:
                 print(dist_sorted[:10])
             # for k in range(num):
             for k in range(num2):
@@ -239,7 +256,7 @@ def main():
         criterion = nn.TripletMarginLoss(margin=1.0, p=2).cuda()
 
     title = 'CUHK03-AlexNet'
-   
+
     # Train
     for epoch in range(1, args.epochs + 1):
         lr, optimizer = exp_lr_scheduler(optimizer, epoch)
