@@ -65,8 +65,8 @@ def _get_triplet_data():
         temp_b = []
         temp_id = []
         for i in range(class_num):
-	    len1 = len(ff['a']['train'][str(i)])
-	    len2 = len(ff['b']['train'][str(i)])
+	        len1 = len(ff['a']['train'][str(i)])
+	        len2 = len(ff['b']['train'][str(i)])
             if len1 < 5 or len2 < 5:
                 class_num -= 1
             if len1 >= 5 and len2 >= 5:
@@ -110,7 +110,7 @@ def _get_triplet_data():
 
         triplet_dataset = triplet_temp
         triplet_label = triplet_id_temp
-
+        print('class_num: ', class_num)
         return triplet_dataset, triplet_label
 
 
@@ -148,45 +148,46 @@ def train_model(train_loader, model, criterion, optimizer, epoch):
         anchor = triplet_pair[0].resize_(args.train_batch_size, inputs.size(2), inputs.size(3), inputs.size(4))
         positive = triplet_pair[1].resize_(args.train_batch_size, inputs.size(2), inputs.size(3), inputs.size(4))
         negative = triplet_pair[2].resize_(args.train_batch_size, inputs.size(2), inputs.size(3), inputs.size(4))
-	
-	triplet_label_pair = torch.split(targets, 1, 1)
-	anchor_label = triplet_label_pair[0].resize_(args.train_batch_size)
-	positive_label = triplet_label_pair[1].resize_(args.train_batch_size)
-	negative_label = triplet_label_pair[2].resize_(args.train_batch_size)
+
+        triplet_label_pair = torch.split(targets, 1, 1)
+        anchor_label = triplet_label_pair[0].resize_(args.train_batch_size)
+        positive_label = triplet_label_pair[1].resize_(args.train_batch_size)
+        negative_label = triplet_label_pair[2].resize_(args.train_batch_size)
 
         anchor = anchor.float()  # with size of (batch_size * 3 * 224 * 224)
         positive = positive.float()
         negative = negative.float()
-	anchor_label.long()
-	positive_label.long()
-	negative_label.long()
+        anchor_label.long()
+        positive_label.long()
+        negative_label.long()
         if args.cuda:
             anchor, positive, negative = anchor.cuda(), positive.cuda(), negative.cuda()
         anchor, positive, negative = Variable(anchor), Variable(positive), Variable(negative)
         if args.cuda:
             anchor_label, positive_label, negative_label = anchor_label.cuda(), positive_label.cuda(), negative_label.cuda()
         anchor_label, positive_label, negative_label = Variable(anchor_label), Variable(positive_label), Variable(negative_label)
-        
-	if 0:
-	    print(anchor[0])
-	    print(positive[0])
-	    print(negative[0])
+
+        if 0:
+            print(anchor[0])
+            print(positive[0])
+            print(negative[0])
         # compute output
         outputs1, outputs2, outputs3 = model(anchor), model(positive), model(negative)
         # print('anchor size: ', anchor.size())
         # print('output11 size: ', outputs1.size())
-	
-	if batch_idx == 40:
-	    print(outputs1)
-	    print(outputs2)
-	    print(outputs3)
-	    sys.exit('exit')
+
+        if batch_idx == 40:
+            print(outputs1)
+            print(outputs2)
+            print(outputs3)
+            sys.exit('exit')
+
         loss = criterion(outputs1, outputs2, outputs3)
-	# print(loss.data)
-	# sys.exit('exit')
+        # print(loss.data)
+        # sys.exit('exit')
 
         # compute gradient and do SGD step
-	optimizer.zero_grad()
+        optimizer.zero_grad()
         loss.backward()
         optimizer.step()
         if batch_idx % args.log_interval == 0:
@@ -262,6 +263,36 @@ new_model = torch.nn.DataParallel(new_model)
 if args.cuda:
     new_model.cuda()
 
+
+class AlexNet(nn.Module):
+
+    def __init__(self, num_classes=1162):
+        super(AlexNet, self).__init__()
+        self.features = nn.Sequential(
+            nn.Conv2d(3, 64, kernel_size=11, stride=4, padding=2),
+            nn.ReLU(inplace=True),
+            nn.MaxPool2d(kernel_size=3, stride=2),
+            nn.Conv2d(64, 192, kernel_size=5, padding=2),
+            nn.ReLU(inplace=True),
+            nn.MaxPool2d(kernel_size=3, stride=2),
+            nn.Conv2d(192, 384, kernel_size=3, padding=1),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(384, 256, kernel_size=3, padding=1),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(256, 256, kernel_size=3, padding=1),
+            nn.ReLU(inplace=True),
+            nn.MaxPool2d(kernel_size=3, stride=2),
+        )
+
+    def forward(self, x):
+        x = self.features(x)
+        x = x.view(x.size(0), 256 * 6 * 6)
+        return x
+mymodel = AlexNet()
+mymodel = torch.nn.DataParallel(mymodel)
+if args.cuda:
+    mymodel.cuda()
+
 def main():
 
     triplet_dataset, triplet_label = _get_triplet_data()
@@ -284,7 +315,8 @@ def main():
         lr, optimizer = exp_lr_scheduler(optimizer, epoch)
         print('\nEpoch: [%d | %d] LR: %f' % (epoch, args.epochs, lr))
         print()
-        train_model(train_loader, new_model, criterion, optimizer, epoch)
+        # train_model(train_loader, new_model, criterion, optimizer, epoch)
+        train_model(train_loader, mymodel, criterion, optimizer, epoch)
 
     # Test
     new_model.eval()
