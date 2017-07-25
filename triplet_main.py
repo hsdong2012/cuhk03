@@ -9,6 +9,7 @@ import shutil
 import random
 import numpy as np
 import torch
+import scipy
 from torchvision import datasets, transforms
 from torchvision import models
 import torch.utils.data as data_utils
@@ -148,7 +149,17 @@ def train_model(train_loader, model, criterion, optimizer, epoch):
         anchor = triplet_pair[0].resize_(args.train_batch_size, inputs.size(2), inputs.size(3), inputs.size(4))
         positive = triplet_pair[1].resize_(args.train_batch_size, inputs.size(2), inputs.size(3), inputs.size(4))
         negative = triplet_pair[2].resize_(args.train_batch_size, inputs.size(2), inputs.size(3), inputs.size(4))
-        
+        if batch_idx == 2:
+            image1, image2, image3 = anchor.numpy(), positive.numpy(), negative.numpy()
+            img1, img2, img3 = image1.transpose(0,2,3,1), image2.transpose(0,2,3,1), image3.transpose(0,2,3,1)
+            file_path = 'tripletimage/'
+            directory = os.path.dirname(file_path)
+            if not os.path.exists(directory):
+                os.makedirs(directory)
+            scipy.misc.imsave(directory+'/'+str(0)+'.png', img1[10])
+            scipy.misc.imsave(directory+'/'+str(1)+'.png', img2[10])
+            scipy.misc.imsave(directory+'/'+str(2)+'.png', img3[10])
+            sys.exit('exit')
         triplet_label_pair = torch.split(targets, 1, 1)
         anchor_label = triplet_label_pair[0].resize_(args.train_batch_size)
         positive_label = triplet_label_pair[1].resize_(args.train_batch_size)
@@ -199,7 +210,7 @@ def train_model(train_loader, model, criterion, optimizer, epoch):
 
 
 def cmc(model, val_or_test='test'):
-    
+
     model.eval()
     a,b = _get_data(val_or_test)
     # camera1 as probe, camera2 as gallery
@@ -281,7 +292,7 @@ def main():
     mymodel.classifier._modules['0'] = nn.Dropout(p=0.0001)
     mymodel.features = torch.nn.DataParallel(mymodel.features)
     if args.cuda:
-        mymodel.cuda() 
+        mymodel.cuda()
 
 
     triplet_dataset, triplet_label = _get_triplet_data()
