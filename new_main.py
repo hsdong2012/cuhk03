@@ -54,7 +54,7 @@ if args.cuda:
 
 #get train dataset of five camera pairs
 def _get_train_data(train, group):
-    with h5py.File('cuhk-03.h5', 'r') as ff:
+    with h5py.File('triplet-cuhk-03.h5', 'r') as ff:
         class_num = len(ff[group][train].keys())
         print("class number: ", class_num)
         temp = []
@@ -109,7 +109,7 @@ def _get_data(val_or_test):
 
 
 
-def train(train_loader, model, criterion, optimizer, epoch):
+def train_model(train_loader, model, criterion, optimizer, epoch):
 
     model.train()
 
@@ -155,10 +155,11 @@ def train(train_loader, model, criterion, optimizer, epoch):
         top1.avg, top5.avg))
     print('Train Average Loss: {:.4f}'.format(losses.avg))
     print()
-    return (losses.avg, top1.avg, top5.avg)
+    return losses.avg, top1.avg, top5.avg
 
 def cmc(model, val_or_test='test'):
 
+        model.eval()
         a,b = _get_data(val_or_test)
 
         # camera1 as probe, camera2 as gallery
@@ -255,10 +256,11 @@ def main():
         lr, optimizer = exp_lr_scheduler(optimizer, epoch)
         print('\nEpoch: [%d | %d] LR: %f' % (epoch, args.epochs, lr))
         print()
-        train_loss, train_acc, train_top5 = train(train_loader, model, criterion, optimizer, epoch)
+        train_loss, train_acc, train_top5 = train_model(train_loader, model, criterion, optimizer, epoch)
 
-    # Test
-    model.eval()
+
+    """Test"""
+
     if 1:
         model.fc = ''
         # model = torch.nn.DataParallel(model)
@@ -309,5 +311,5 @@ def get_datetime():
     return date_time
 
 if __name__ == '__main__':
-    # main()
-    use_trained_model()
+    main()
+    # use_trained_model()

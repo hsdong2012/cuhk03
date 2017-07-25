@@ -65,8 +65,8 @@ def _get_triplet_data():
         temp_b = []
         temp_id = []
         for i in range(class_num):
-	        len1 = len(ff['a']['train'][str(i)])
-	        len2 = len(ff['b']['train'][str(i)])
+	    len1 = len(ff['a']['train'][str(i)])
+	    len2 = len(ff['b']['train'][str(i)])
             if len1 < 5 or len2 < 5:
                 class_num -= 1
             if len1 >= 5 and len2 >= 5:
@@ -90,7 +90,7 @@ def _get_triplet_data():
         camera1_dataset = a_tensor.resize_(class_num, 5, a_tensor.size(1), a_tensor.size(2), a_tensor.size(3))
         camera2_dataset = b_tensor.resize_(class_num, 5, b_tensor.size(1), b_tensor.size(2), b_tensor.size(3))
 
-        pair_num = 1000
+        pair_num = 4000
         triplet_temp = torch.FloatTensor(pair_num, 3, camera1_dataset.size(2), camera1_dataset.size(3), camera1_dataset.size(3)).zero_()
         triplet_id_temp = torch.LongTensor(pair_num, 3)
 
@@ -148,7 +148,7 @@ def train_model(train_loader, model, criterion, optimizer, epoch):
         anchor = triplet_pair[0].resize_(args.train_batch_size, inputs.size(2), inputs.size(3), inputs.size(4))
         positive = triplet_pair[1].resize_(args.train_batch_size, inputs.size(2), inputs.size(3), inputs.size(4))
         negative = triplet_pair[2].resize_(args.train_batch_size, inputs.size(2), inputs.size(3), inputs.size(4))
-
+        
         triplet_label_pair = torch.split(targets, 1, 1)
         anchor_label = triplet_label_pair[0].resize_(args.train_batch_size)
         positive_label = triplet_label_pair[1].resize_(args.train_batch_size)
@@ -176,7 +176,7 @@ def train_model(train_loader, model, criterion, optimizer, epoch):
         # print('anchor size: ', anchor.size())
         # print('output11 size: ', outputs1.size())
 
-        if batch_idx == 40:
+        if 0:
             print(outputs1)
             print(outputs2)
             print(outputs3)
@@ -199,7 +199,8 @@ def train_model(train_loader, model, criterion, optimizer, epoch):
 
 
 def cmc(model, val_or_test='test'):
-
+    
+    model.eval()
     a,b = _get_data(val_or_test)
     # camera1 as probe, camera2 as gallery
     def _cmc_curve(model, camera1, camera2, rank_max=20):
@@ -244,56 +245,44 @@ def cmc(model, val_or_test='test'):
     return _cmc_curve(model,a,b)
 
 
-original_model = models.alexnet(pretrained=True)
 
+model = models.alexnet(pretrained=True)
+new_classifier = nn.Sequential(*list(model.classifier.children())[:-1])
+model.classifier = new_classifier
+model.features = torch.nn.DataParallel(model.features)
+if args.cuda:
+    model.cuda()
+
+ori_model = models.alexnet(pretrained=True)
 class AlexNetNoClassifier(nn.Module):
-    def __init__(self):
-        super(AlexNetNoClassifier, self).__init__()
-        self.features = nn.Sequential(
-            *list(original_model.features.children())[:]
-            # *list(original_model.features.children())
-        )
-    def forward(self, x):
-        x = self.features(x)
-        x = x.view(x.size(0), 256 * 6 * 6)
-        return x
+        def __init__(self):
+            super(AlexNetNoClassifier, self).__init__()
+            self.features = nn.Sequential(
+                *list(ori_model.features.children())[:]
+                # *list(original_model.features.children())
+            )
+        def forward(self, x):
+            x = self.features(x)
+            x = x.view(x.size(0), 256 * 6 * 6)
+            return x
 
 new_model = AlexNetNoClassifier()
-new_model = torch.nn.DataParallel(new_model)
+new_model.features = torch.nn.DataParallel(new_model.features)
 if args.cuda:
     new_model.cuda()
 
 
-class AlexNet(nn.Module):
-
-    def __init__(self, num_classes=1162):
-        super(AlexNet, self).__init__()
-        self.features = nn.Sequential(
-            nn.Conv2d(3, 64, kernel_size=11, stride=4, padding=2),
-            nn.ReLU(inplace=True),
-            nn.MaxPool2d(kernel_size=3, stride=2),
-            nn.Conv2d(64, 192, kernel_size=5, padding=2),
-            nn.ReLU(inplace=True),
-            nn.MaxPool2d(kernel_size=3, stride=2),
-            nn.Conv2d(192, 384, kernel_size=3, padding=1),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(384, 256, kernel_size=3, padding=1),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(256, 256, kernel_size=3, padding=1),
-            nn.ReLU(inplace=True),
-            nn.MaxPool2d(kernel_size=3, stride=2),
-        )
-
-    def forward(self, x):
-        x = self.features(x)
-        x = x.view(x.size(0), 256 * 6 * 6)
-        return x
-mymodel = AlexNet()
-mymodel = torch.nn.DataParallel(mymodel)
-if args.cuda:
-    mymodel.cuda()
-
 def main():
+
+    original_model = models.alexnet(pretrained=True)
+    # print(original_model)
+    original_model.classifier = nn.Sequential(*list(original_model.classifier.children())[:-6])
+    mymodel = original_model
+    mymodel.classifier._modules['0'] = nn.Dropout(p=0.0001)
+    mymodel.features = torch.nn.DataParallel(mymodel.features)
+    if args.cuda:
+        mymodel.cuda() 
+
 
     triplet_dataset, triplet_label = _get_triplet_data()
     print('train data  size: ', triplet_dataset.size())
@@ -304,9 +293,11 @@ def main():
     cudnn.benchmark = True
 
     optimizer = optim.SGD(new_model.parameters(), lr=args.lr, momentum=args.momentum, weight_decay=args.weight_decay)
+
     criterion = nn.TripletMarginLoss(margin=1.0, p=2)
     if args.cuda:
         criterion = nn.TripletMarginLoss(margin=1.0, p=2).cuda()
+
 
     title = 'CUHK03-AlexNet'
 
@@ -316,14 +307,13 @@ def main():
         print('\nEpoch: [%d | %d] LR: %f' % (epoch, args.epochs, lr))
         print()
         # train_model(train_loader, new_model, criterion, optimizer, epoch)
-        train_model(train_loader, mymodel, criterion, optimizer, epoch)
+        train_model(train_loader, model, criterion, optimizer, epoch)
 
     # Test
-    new_model.eval()
 
-    torch.save(new_model, 'triplet_alexnet_trained.pth')
+    torch.save(mymodel, 'mymodel_triplet_trained.pth')
 
-    score_array = cmc(new_model)
+    score_array = cmc(mymodel)
     print(score_array)
 
     print('Top1(accuracy) : {:.3f}\t''Top5(accuracy) : {:.3f}'.format(
@@ -331,7 +321,7 @@ def main():
 
 def use_trained_model():
 
-    model = torch.load('triplet_alexnet_trained.pth')
+    model = torch.load('mymodel_triplet_trained.pth')
 
     score_array = cmc(model)
     print(score_array)
