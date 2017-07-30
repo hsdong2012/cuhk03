@@ -9,7 +9,8 @@ import shutil
 import random
 import numpy as np
 import torch
-import scipy
+import scipy.misc
+import scipy.io as sio
 from torchvision import datasets, transforms
 from torchvision import models
 import torch.utils.data as data_utils
@@ -29,10 +30,10 @@ parser.add_argument('--train-batch-size', type=int, default=20, metavar='N',
                     help='input batch size for training (default: 20)')
 parser.add_argument('--test-batch-size', type=int, default=10, metavar='N',
                     help='input batch size for testing (default: 10)')
-parser.add_argument('--epochs', type=int, default=60, metavar='N',
+parser.add_argument('--epochs', type=int, default=40, metavar='N',
                     help='number of epochs to train (default: 60)')
 # lr=0.1 for resnet, 0.01 for alexnet and vgg
-parser.add_argument('--lr', type=float, default=0.01, metavar='LR',
+parser.add_argument('--lr', type=float, default=0.05, metavar='LR',
                     help='learning rate (default: 0.01)')
 parser.add_argument('--momentum', type=float, default=0.005, metavar='M',
                     help='SGD momentum (default: 0.5)')
@@ -59,11 +60,14 @@ if args.cuda:
 def range_except_k(n, end, start = 0):
     return range(start, n) + range(n+1, end)
 
+
 def _get_triplet_data():
     with h5py.File('triplet-cuhk-03.h5', 'r') as ff:
         class_num = len(ff['a']['train'].keys())
         temp_a = []
         temp_b = []
+	a_temp = []
+	b_temp = []
         temp_id = []
         for i in range(class_num):
 	    len1 = len(ff['a']['train'][str(i)])
@@ -75,49 +79,91 @@ def _get_triplet_data():
                     temp_id.append(i)
                     temp_a.append(np.array(ff['a']['train'][str(i)][k]))
                     temp_b.append(np.array(ff['b']['train'][str(i)][k]))
+		a_temp.append(temp_a)
+		b_temp.append(temp_b)
+		temp_a = []
+		temp_b = []
 
-        imageset_a = np.array(temp_a)
-        imageset_b = np.array(temp_b)
-        a_trans = imageset_a.transpose(0, 3, 1, 2)
-        b_trans = imageset_b.transpose(0, 3, 1, 2)
+      
+        imageset_a = np.array(a_temp)
+        imageset_b = np.array(b_temp)
+        a_trans = imageset_a.transpose(0, 1, 4, 2, 3)
+        b_trans = imageset_b.transpose(0, 1, 4, 2, 3)
         a_tensor = torch.from_numpy(a_trans)
         b_tensor = torch.from_numpy(b_trans)
-
+	# print(a_tensor.size())
+	
         transform = transforms.Normalize(mean=[0.367, 0.362, 0.357], std=[0.244, 0.247, 0.249])
-        for j in range(class_num*5):
-            a_tensor[j] = transform(a_tensor[j])
-            b_tensor[j] = transform(b_tensor[j])
+        for j in range(class_num):
+	    for k in range(5):
+            	a_tensor[j][k] = transform(a_tensor[j][k])
+            	b_tensor[j][k] = transform(b_tensor[j][k])
 
-        camera1_dataset = a_tensor.resize_(class_num, 5, a_tensor.size(1), a_tensor.size(2), a_tensor.size(3))
-        camera2_dataset = b_tensor.resize_(class_num, 5, b_tensor.size(1), b_tensor.size(2), b_tensor.size(3))
+        pair_num = 20000
+        # pair_num = 100*(class_num-1)
+        triplet_temp = torch.FloatTensor(pair_num, 3, a_tensor.size(2), a_tensor.size(3), a_tensor.size(4)).zero_()
+        triplet_id_temp = torch.LongTensor(pair_num, 3).zero_()
 
-        pair_num = 4000
-        triplet_temp = torch.FloatTensor(pair_num, 3, camera1_dataset.size(2), camera1_dataset.size(3), camera1_dataset.size(3)).zero_()
-        triplet_id_temp = torch.LongTensor(pair_num, 3)
-
+        '''i = 0
+	for k in range(100):
+            range_no_k = range_except_k(k, class_num)
+	    for k1 in range_no_k:
+		    
+            	j0 = random.randint(0, 4)
+                j1 = random.randint(0, 4)
+            	j2 = random.randint(0, 4)
+            	triplet_temp[i][0] = a_tensor[k][j0]
+            	triplet_id_temp[i][0] = k
+            	triplet_temp[i][1] = b_tensor[k][j1]
+            	triplet_id_temp[i][1] = k
+            	triplet_temp[i][2] = b_tensor[k1][j2]
+            	triplet_id_temp[i][2] = k1
+		i += 1
+	'''
         for i in range(pair_num):
             k = random.randint(0, class_num-1)
             range_no_k = range_except_k(k, class_num)
+            # k = random.randint(0, 199)
+            # range_no_k = range_except_k(k, 200)
             k1 = random.choice(range_no_k)
+            # j0 = random.randint(0, 4)
+            # j1 = random.randint(0, 4)
             j0 = random.randint(0, 4)
             j1 = random.randint(0, 4)
             j2 = random.randint(0, 4)
-            triplet_temp[i][0] = camera1_dataset[k][j0]
+            triplet_temp[i][0] = a_tensor[k][j0]
             triplet_id_temp[i][0] = k
-            triplet_temp[i][1] = camera2_dataset[k][j1]
+            triplet_temp[i][1] = b_tensor[k][j1]
             triplet_id_temp[i][1] = k
-            triplet_temp[i][2] = camera1_dataset[k1][j2]
+            triplet_temp[i][2] = b_tensor[k1][j2]
             triplet_id_temp[i][2] = k1
+	
+
+	if 0:
+	    for i in range(10, 15):	
+                image1, image2, image3 = triplet_temp[i][0].numpy(), triplet_temp[i][1].numpy(), triplet_temp[i][2].numpy()
+                img1, img2, img3 = image1.transpose(1,2,0), image2.transpose(1,2,0), image3.transpose(1,2,0)
+                file_path = 'triplet_world/'
+                directory = os.path.dirname(file_path)
+                if not os.path.exists(directory):
+                    os.makedirs(directory)
+                scipy.misc.imsave(directory+'/anchor'+str(i)+'.png', img1)
+                scipy.misc.imsave(directory+'/pos'+str(i)+'.png', img2)
+                scipy.misc.imsave(directory+'/neg'+str(i)+'.png', img3)
+
+            sys.exit('exit')
+
+
 
         triplet_dataset = triplet_temp
         triplet_label = triplet_id_temp
-        print('class_num: ', class_num)
+        
         return triplet_dataset, triplet_label
 
 
 # get validation dataset of five camera pairs
 def _get_data(val_or_test):
-    with h5py.File('cuhk-03.h5','r') as ff:
+    with h5py.File('triplet-cuhk-03.h5','r') as ff:
     	num = 100
     	num1 = 100
     	num2 = 100
@@ -139,63 +185,68 @@ def _get_data(val_or_test):
         return (camere1, camere2)
 
 
+def tensor_normalize(input, p=2.0, dim=1, eps=1e-12):
+    
+    return input / input.norm(p, dim).clamp(min=eps).expand_as(input)
+
+
+
 def train_model(train_loader, model, criterion, optimizer, epoch):
 
     model.train()
 
     for batch_idx, (inputs, targets) in enumerate(train_loader):
+       
+	"""method1: split and squeeze"""
+	triplet_pair = torch.split(inputs, 1, 1)
+        anchor = torch.squeeze(triplet_pair[0])
+	positive = torch.squeeze(triplet_pair[1])
+	negative = torch.squeeze(triplet_pair[2])
+	inputs_cat = Variable(torch.cat((anchor, positive, negative), 0)).cuda()
+	outputs_cat = model(inputs_cat)
+	outputs_split = torch.split(outputs_cat, args.train_batch_size, 0)
+	outputs1 = outputs_split[0]
+	outputs2 = outputs_split[1]
+	outputs3 = outputs_split[2]
+	outputs1, outputs2, outputs3 = tensor_normalize(outputs1), tensor_normalize(outputs2), tensor_normalize(outputs3)
 
-        triplet_pair = torch.split(inputs, 1, 1)
-        anchor = triplet_pair[0].resize_(args.train_batch_size, inputs.size(2), inputs.size(3), inputs.size(4))
-        positive = triplet_pair[1].resize_(args.train_batch_size, inputs.size(2), inputs.size(3), inputs.size(4))
-        negative = triplet_pair[2].resize_(args.train_batch_size, inputs.size(2), inputs.size(3), inputs.size(4))
-        if batch_idx == 2:
+	'''	
+	"""method2: tensor"""
+	batch_size = args.train_batch_size
+        anchor_temp = torch.FloatTensor(batch_size, inputs.size(2), inputs.size(3), inputs.size(4)).zero_()
+        positive_temp = torch.FloatTensor(batch_size, inputs.size(2), inputs.size(3), inputs.size(4)).zero_()
+        negative_temp = torch.FloatTensor(batch_size, inputs.size(2), inputs.size(3), inputs.size(4)).zero_()
+	for k in range(batch_size):
+	    anchor_temp[k] = inputs[k][0]
+	    positive_temp[k] = inputs[k][1]
+	    negative_temp[k] = inputs[k][2]
+	anchor = anchor_temp
+	positive = positive_temp
+	negative = negative_temp	
+	
+	"""save image to check"""
+        if 0:
             image1, image2, image3 = anchor.numpy(), positive.numpy(), negative.numpy()
             img1, img2, img3 = image1.transpose(0,2,3,1), image2.transpose(0,2,3,1), image3.transpose(0,2,3,1)
-            file_path = 'tripletimage/'
+            file_path = 'triplet_split/'
             directory = os.path.dirname(file_path)
             if not os.path.exists(directory):
                 os.makedirs(directory)
-            scipy.misc.imsave(directory+'/'+str(0)+'.png', img1[10])
-            scipy.misc.imsave(directory+'/'+str(1)+'.png', img2[10])
-            scipy.misc.imsave(directory+'/'+str(2)+'.png', img3[10])
+	    for k in range(5, 10):
+            	scipy.misc.imsave(directory+'/anchor'+str(k)+'.png', img1[k])
+            	scipy.misc.imsave(directory+'/pos'+str(k)+'.png', img2[k])
+            	scipy.misc.imsave(directory+'/neg'+str(k)+'.png', img3[k])
             sys.exit('exit')
-        triplet_label_pair = torch.split(targets, 1, 1)
-        anchor_label = triplet_label_pair[0].resize_(args.train_batch_size)
-        positive_label = triplet_label_pair[1].resize_(args.train_batch_size)
-        negative_label = triplet_label_pair[2].resize_(args.train_batch_size)
 
-        anchor = anchor.float()  # with size of (batch_size * 3 * 224 * 224)
-        positive = positive.float()
-        negative = negative.float()
-        anchor_label.long()
-        positive_label.long()
-        negative_label.long()
-        if args.cuda:
+        anchor, positive, negative = anchor.float(), positive.float(), negative.float() 
+	if args.cuda:
             anchor, positive, negative = anchor.cuda(), positive.cuda(), negative.cuda()
         anchor, positive, negative = Variable(anchor), Variable(positive), Variable(negative)
-        if args.cuda:
-            anchor_label, positive_label, negative_label = anchor_label.cuda(), positive_label.cuda(), negative_label.cuda()
-        anchor_label, positive_label, negative_label = Variable(anchor_label), Variable(positive_label), Variable(negative_label)
-
-        if 0:
-            print(anchor[0])
-            print(positive[0])
-            print(negative[0])
-        # compute output
         outputs1, outputs2, outputs3 = model(anchor), model(positive), model(negative)
-        # print('anchor size: ', anchor.size())
-        # print('output11 size: ', outputs1.size())
+	'''
 
-        if 0:
-            print(outputs1)
-            print(outputs2)
-            print(outputs3)
-            sys.exit('exit')
-
+	# compute loss
         loss = criterion(outputs1, outputs2, outputs3)
-        # print(loss.data)
-        # sys.exit('exit')
 
         # compute gradient and do SGD step
         optimizer.zero_grad()
@@ -257,20 +308,13 @@ def cmc(model, val_or_test='test'):
 
 
 
-model = models.alexnet(pretrained=True)
-new_classifier = nn.Sequential(*list(model.classifier.children())[:-1])
-model.classifier = new_classifier
-model.features = torch.nn.DataParallel(model.features)
-if args.cuda:
-    model.cuda()
-
 ori_model = models.alexnet(pretrained=True)
+# print(ori_model.features._modules['3'].weight)
 class AlexNetNoClassifier(nn.Module):
         def __init__(self):
             super(AlexNetNoClassifier, self).__init__()
             self.features = nn.Sequential(
                 *list(ori_model.features.children())[:]
-                # *list(original_model.features.children())
             )
         def forward(self, x):
             x = self.features(x)
@@ -278,21 +322,27 @@ class AlexNetNoClassifier(nn.Module):
             return x
 
 new_model = AlexNetNoClassifier()
+# print(new_model)
+# print(new_model.features._modules['3'].weight)
 new_model.features = torch.nn.DataParallel(new_model.features)
+
 if args.cuda:
     new_model.cuda()
+
+# sys.exit('exit')
 
 
 def main():
 
-    original_model = models.alexnet(pretrained=True)
-    # print(original_model)
-    original_model.classifier = nn.Sequential(*list(original_model.classifier.children())[:-6])
-    mymodel = original_model
-    mymodel.classifier._modules['0'] = nn.Dropout(p=0.0001)
+    mymodel = models.alexnet(pretrained=True)
+    # print(mymodel)
+    mymodel.classifier = nn.Sequential(*list(mymodel.classifier.children())[:-6])
+    mymodel.classifier._modules['0'] = nn.Linear(256*6*6, 256*6*6)
     mymodel.features = torch.nn.DataParallel(mymodel.features)
     if args.cuda:
         mymodel.cuda()
+    # print(mymodel)
+    # sys.exit('exit')
 
 
     triplet_dataset, triplet_label = _get_triplet_data()
@@ -302,6 +352,8 @@ def main():
     train_loader = data_utils.DataLoader(train_data, batch_size=args.train_batch_size, shuffle=True)
 
     cudnn.benchmark = True
+
+    # optimizer = optim.SGD(mymodel.parameters(), lr=args.lr, momentum=args.momentum, weight_decay=args.weight_decay)
 
     optimizer = optim.SGD(new_model.parameters(), lr=args.lr, momentum=args.momentum, weight_decay=args.weight_decay)
 
@@ -317,14 +369,16 @@ def main():
         lr, optimizer = exp_lr_scheduler(optimizer, epoch)
         print('\nEpoch: [%d | %d] LR: %f' % (epoch, args.epochs, lr))
         print()
-        # train_model(train_loader, new_model, criterion, optimizer, epoch)
-        train_model(train_loader, model, criterion, optimizer, epoch)
+        train_model(train_loader, new_model, criterion, optimizer, epoch)
+        # train_model(train_loader, mymodel, criterion, optimizer, epoch)
 
     # Test
 
-    torch.save(mymodel, 'mymodel_triplet_trained.pth')
+    # torch.save(mymodel, 'mymodel_triplet_trained.pth')
+    torch.save(new_model, 'new_model_triplet_trained.pth')
 
-    score_array = cmc(mymodel)
+    # score_array = cmc(mymodel)
+    score_array = cmc(new_model)
     print(score_array)
 
     print('Top1(accuracy) : {:.3f}\t''Top5(accuracy) : {:.3f}'.format(
@@ -341,9 +395,10 @@ def use_trained_model():
         score_array[0], score_array[4]))
 
 
-def exp_lr_scheduler(optimizer, epoch, init_lr=args.lr, lr_decay_epoch=20):
+def exp_lr_scheduler(optimizer, epoch, init_lr=args.lr, lr_decay_epoch=10):
     """Decay learning rate by a factor of 0.1 every lr_decay_epoch epochs."""
-    lr = init_lr * (0.1**(epoch // lr_decay_epoch))
+    # lr = init_lr * (0.1**(epoch // lr_decay_epoch))
+    lr = init_lr * (0.2**(epoch // lr_decay_epoch))
     for param_group in optimizer.param_groups:
         param_group['lr'] = lr
 

@@ -27,7 +27,7 @@ parser.add_argument('--train-batch-size', type=int, default=20, metavar='N',
                     help='input batch size for training (default: 20)')
 parser.add_argument('--test-batch-size', type=int, default=10, metavar='N',
                     help='input batch size for testing (default: 10)')
-parser.add_argument('--epochs', type=int, default=60, metavar='N',
+parser.add_argument('--epochs', type=int, default=3, metavar='N',
                     help='number of epochs to train (default: 60)')
 # lr=0.1 for resnet, 0.01 for alexnet and vgg
 parser.add_argument('--lr', type=float, default=0.1, metavar='LR',
@@ -86,7 +86,7 @@ def _get_train_data(train, group):
 
 # get validation dataset of five camera pairs
 def _get_data(val_or_test):
-    with h5py.File('cuhk-03.h5','r') as ff:
+    with h5py.File('triplet-cuhk-03.h5','r') as ff:
 	num = 100
 	num1 = 100
 	num2 = 100
@@ -180,13 +180,15 @@ def cmc(model, val_or_test='test'):
             camera1, camera_batch1, camera2 = Variable(camera1), Variable(camera_batch1), Variable(camera2)
 
             feature2_batch = model(camera2)       # with size 100 * 4096
-
+	    feature2_batch = torch.squeeze(feature2_batch)	    
+	    # print(feature2_batch.size())
             for i in range(num1):
                 for j in range(num2):
                     camera_batch1[j] = camera1[i]
 
                 feature1_batch = model(camera_batch1) # with size 100 * 4096
-
+		feature1_batch = torch.squeeze(feature1_batch)
+		
                 pdist = nn.PairwiseDistance(2)
                 dist_batch = pdist(feature1_batch, feature2_batch)  # with size 100 * 1
 
@@ -234,11 +236,12 @@ def main():
         num_ftrs = model.fc.in_features
         model.fc = nn.Linear(num_ftrs, class_num)
         model = torch.nn.DataParallel(model)
-
+	# print(model)
     if 0:
         model = models.alexnet(pretrained=True)
         model.classifier._modules['6'] = nn.Linear(4096, class_num)
         model.features = torch.nn.DataParallel(model.features)
+       
 
     if args.cuda:
         model.cuda()
@@ -262,14 +265,17 @@ def main():
     """Test"""
 
     if 1:
-        model.fc = ''
+        model = nn.Sequential(*list(model.module.children())[:-1])
+	# print(model)
         # model = torch.nn.DataParallel(model)
-    	torch.save(model, 'resnet_trained.pth')
+    	# torch.save(model, 'resnet_trained.pth')
     if 0:
         new_classifier = nn.Sequential(*list(model.classifier.children())[:-1])
+        """if model = torch.nn.DataParallel(model) above, add module"""
+	# new_classifier = nn.Sequential(*list(model.module.classifier.children())[:-1])
         model.classifier = new_classifier
         # model.features = torch.nn.DataParallel(model.features)
-    	torch.save(model, 'alexnet_trained.pth')
+    	# torch.save(model, 'alexnet_trained.pth')
 
 
     score_array = cmc(model)
@@ -280,10 +286,26 @@ def main():
 
 def use_trained_model():
 
-    if 1:
-    	model = torch.load('resnet_trained.pth')
     if 0:
+    	model = torch.load('resnet_trained.pth')
+    if 1:
     	model = torch.load('alexnet_trained.pth')
+    
+    # print(model)
+    '''class AlexNetNoClassifier(nn.Module):
+	def __init__(self):
+	    super(AlexNetNoClassifier, self).__init__()
+	    self.features = nn.Sequential(
+	    	*list(model.features.children())[:]
+	    )
+	def forward(self, x):
+	    x = self.features(x)
+	    x = x.view(x.size(0), 256*6*6)
+	    return x
+    new_model = AlexNetNoClassifier()
+    print(new_model)
+    score_array = cmc(new_model)
+    '''
 
     score_array = cmc(model)
     print(score_array)
@@ -311,5 +333,5 @@ def get_datetime():
     return date_time
 
 if __name__ == '__main__':
-    main()
-    # use_trained_model()
+    # main()
+    use_trained_model()
