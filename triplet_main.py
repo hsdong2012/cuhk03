@@ -100,34 +100,17 @@ def _get_triplet_data():
             	b_tensor[j][k] = transform(b_tensor[j][k])
 
         pair_num = 20000
-        # pair_num = 100*(class_num-1)
+
         triplet_temp = torch.FloatTensor(pair_num, 3, a_tensor.size(2), a_tensor.size(3), a_tensor.size(4)).zero_()
         triplet_id_temp = torch.LongTensor(pair_num, 3).zero_()
 
-        '''i = 0
-	for k in range(100):
-            range_no_k = range_except_k(k, class_num)
-	    for k1 in range_no_k:
-		    
-            	j0 = random.randint(0, 4)
-                j1 = random.randint(0, 4)
-            	j2 = random.randint(0, 4)
-            	triplet_temp[i][0] = a_tensor[k][j0]
-            	triplet_id_temp[i][0] = k
-            	triplet_temp[i][1] = b_tensor[k][j1]
-            	triplet_id_temp[i][1] = k
-            	triplet_temp[i][2] = b_tensor[k1][j2]
-            	triplet_id_temp[i][2] = k1
-		i += 1
-	'''
+	
         for i in range(pair_num):
             k = random.randint(0, class_num-1)
             range_no_k = range_except_k(k, class_num)
             # k = random.randint(0, 199)
             # range_no_k = range_except_k(k, 200)
             k1 = random.choice(range_no_k)
-            # j0 = random.randint(0, 4)
-            # j1 = random.randint(0, 4)
             j0 = random.randint(0, 4)
             j1 = random.randint(0, 4)
             j2 = random.randint(0, 4)
@@ -139,22 +122,6 @@ def _get_triplet_data():
             triplet_id_temp[i][2] = k1
 	
 
-	if 0:
-	    for i in range(10, 15):	
-                image1, image2, image3 = triplet_temp[i][0].numpy(), triplet_temp[i][1].numpy(), triplet_temp[i][2].numpy()
-                img1, img2, img3 = image1.transpose(1,2,0), image2.transpose(1,2,0), image3.transpose(1,2,0)
-                file_path = 'triplet_world/'
-                directory = os.path.dirname(file_path)
-                if not os.path.exists(directory):
-                    os.makedirs(directory)
-                scipy.misc.imsave(directory+'/anchor'+str(i)+'.png', img1)
-                scipy.misc.imsave(directory+'/pos'+str(i)+'.png', img2)
-                scipy.misc.imsave(directory+'/neg'+str(i)+'.png', img3)
-
-            sys.exit('exit')
-
-
-
         triplet_dataset = triplet_temp
         triplet_label = triplet_id_temp
         
@@ -164,9 +131,9 @@ def _get_triplet_data():
 # get validation dataset of five camera pairs
 def _get_data(val_or_test):
     with h5py.File('triplet-cuhk-03.h5','r') as ff:
-    	num = 100
-    	num1 = 100
-    	num2 = 100
+    	# num = 100
+    	num1 = 30  # camera1, probe
+        num2 = 30  # camera2, gallery, 100 >= num2 >= num1
     	a = np.array([ff['a'][val_or_test][str(i)][1] for i in range(num1)])
     	b = np.array([ff['b'][val_or_test][str(i)][1] for i in range(num2)])
     	a_trans = a.transpose(0, 3, 1, 2)
@@ -210,40 +177,6 @@ def train_model(train_loader, model, criterion, optimizer, epoch):
 	outputs3 = outputs_split[2]
 	outputs1, outputs2, outputs3 = tensor_normalize(outputs1), tensor_normalize(outputs2), tensor_normalize(outputs3)
 
-	'''	
-	"""method2: tensor"""
-	batch_size = args.train_batch_size
-        anchor_temp = torch.FloatTensor(batch_size, inputs.size(2), inputs.size(3), inputs.size(4)).zero_()
-        positive_temp = torch.FloatTensor(batch_size, inputs.size(2), inputs.size(3), inputs.size(4)).zero_()
-        negative_temp = torch.FloatTensor(batch_size, inputs.size(2), inputs.size(3), inputs.size(4)).zero_()
-	for k in range(batch_size):
-	    anchor_temp[k] = inputs[k][0]
-	    positive_temp[k] = inputs[k][1]
-	    negative_temp[k] = inputs[k][2]
-	anchor = anchor_temp
-	positive = positive_temp
-	negative = negative_temp	
-	
-	"""save image to check"""
-        if 0:
-            image1, image2, image3 = anchor.numpy(), positive.numpy(), negative.numpy()
-            img1, img2, img3 = image1.transpose(0,2,3,1), image2.transpose(0,2,3,1), image3.transpose(0,2,3,1)
-            file_path = 'triplet_split/'
-            directory = os.path.dirname(file_path)
-            if not os.path.exists(directory):
-                os.makedirs(directory)
-	    for k in range(5, 10):
-            	scipy.misc.imsave(directory+'/anchor'+str(k)+'.png', img1[k])
-            	scipy.misc.imsave(directory+'/pos'+str(k)+'.png', img2[k])
-            	scipy.misc.imsave(directory+'/neg'+str(k)+'.png', img3[k])
-            sys.exit('exit')
-
-        anchor, positive, negative = anchor.float(), positive.float(), negative.float() 
-	if args.cuda:
-            anchor, positive, negative = anchor.cuda(), positive.cuda(), negative.cuda()
-        anchor, positive, negative = Variable(anchor), Variable(positive), Variable(negative)
-        outputs1, outputs2, outputs3 = model(anchor), model(positive), model(negative)
-	'''
 
 	# compute loss
         loss = criterion(outputs1, outputs2, outputs3)
@@ -267,11 +200,10 @@ def cmc(model, val_or_test='test'):
     # camera1 as probe, camera2 as gallery
     def _cmc_curve(model, camera1, camera2, rank_max=20):
         # num = 100  # 100
-        num1 = 100  # camera1
-        num2 = 100  # camera2
+        num1 = 30  # camera1, probe
+        num2 = 30  # camera2, gallery, 100 >= num2 >= num1
         rank = []
         score = []
-        # camera_batch1 = camera1
         camera_batch1 = camera2
         camera1 = camera1.float()
         camera_batch1 = camera_batch1.float()
@@ -290,7 +222,7 @@ def cmc(model, val_or_test='test'):
             # dist_np = np.reshape(dist_np, (num))
             dist_np = np.reshape(dist_np, (num2))
             dist_sorted = np.argsort(dist_np)
-            if i < 30:
+            if i < 20:
                 print(dist_sorted[:10])
             # for k in range(num):
             for k in range(num2):
@@ -329,21 +261,8 @@ new_model.features = torch.nn.DataParallel(new_model.features)
 if args.cuda:
     new_model.cuda()
 
-# sys.exit('exit')
-
 
 def main():
-
-    mymodel = models.alexnet(pretrained=True)
-    # print(mymodel)
-    mymodel.classifier = nn.Sequential(*list(mymodel.classifier.children())[:-6])
-    mymodel.classifier._modules['0'] = nn.Linear(256*6*6, 256*6*6)
-    mymodel.features = torch.nn.DataParallel(mymodel.features)
-    if args.cuda:
-        mymodel.cuda()
-    # print(mymodel)
-    # sys.exit('exit')
-
 
     triplet_dataset, triplet_label = _get_triplet_data()
     print('train data  size: ', triplet_dataset.size())
@@ -353,7 +272,6 @@ def main():
 
     cudnn.benchmark = True
 
-    # optimizer = optim.SGD(mymodel.parameters(), lr=args.lr, momentum=args.momentum, weight_decay=args.weight_decay)
 
     optimizer = optim.SGD(new_model.parameters(), lr=args.lr, momentum=args.momentum, weight_decay=args.weight_decay)
 
@@ -370,14 +288,10 @@ def main():
         print('\nEpoch: [%d | %d] LR: %f' % (epoch, args.epochs, lr))
         print()
         train_model(train_loader, new_model, criterion, optimizer, epoch)
-        # train_model(train_loader, mymodel, criterion, optimizer, epoch)
 
     # Test
 
-    # torch.save(mymodel, 'mymodel_triplet_trained.pth')
-    torch.save(new_model, 'new_model_triplet_trained.pth')
-
-    # score_array = cmc(mymodel)
+    torch.save(new_model, 'triplet_trained.pth')
     score_array = cmc(new_model)
     print(score_array)
 
@@ -386,7 +300,7 @@ def main():
 
 def use_trained_model():
 
-    model = torch.load('mymodel_triplet_trained.pth')
+    model = torch.load('triplet_trained.pth')
 
     score_array = cmc(model)
     print(score_array)
@@ -415,5 +329,5 @@ def get_datetime():
     return date_time
 
 if __name__ == '__main__':
-    main()
-    # use_trained_model()
+    # main()
+    use_trained_model()

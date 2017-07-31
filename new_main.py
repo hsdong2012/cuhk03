@@ -27,7 +27,7 @@ parser.add_argument('--train-batch-size', type=int, default=20, metavar='N',
                     help='input batch size for training (default: 20)')
 parser.add_argument('--test-batch-size', type=int, default=10, metavar='N',
                     help='input batch size for testing (default: 10)')
-parser.add_argument('--epochs', type=int, default=3, metavar='N',
+parser.add_argument('--epochs', type=int, default=60, metavar='N',
                     help='number of epochs to train (default: 60)')
 # lr=0.1 for resnet, 0.01 for alexnet and vgg
 parser.add_argument('--lr', type=float, default=0.1, metavar='LR',
@@ -192,18 +192,26 @@ def cmc(model, val_or_test='test'):
                 pdist = nn.PairwiseDistance(2)
                 dist_batch = pdist(feature1_batch, feature2_batch)  # with size 100 * 1
 
+
+		distance = torch.squeeze(dist_batch)
+		dist_value, dist_indices = torch.sort(distance)
+                dist_indices = dist_indices.cpu().data.numpy()
+		
+		'''
                 dist_np = dist_batch.cpu().data.numpy()
 
         	# dist_np = np.reshape(dist_np, (num))
         	dist_np = np.reshape(dist_np, (num2))
 
-                dist_sorted = np.argsort(dist_np)
+                dist_indices = np.argsort(dist_np)
+		'''		
+
         	if i < 30:
-        	    print(dist_sorted[:10])
+        	    print(dist_indices[:10])
 
                 # for k in range(num):
                 for k in range(num2):
-                    if dist_sorted[k] == i:
+                    if dist_indices[k] == i:
                         rank.append(k+1)
                         break
 
@@ -269,10 +277,9 @@ def main():
 	# print(model)
         # model = torch.nn.DataParallel(model)
     	# torch.save(model, 'resnet_trained.pth')
+    	torch.save(model.state_dict(), 'state_dict_resnet_trained.pth')
     if 0:
         new_classifier = nn.Sequential(*list(model.classifier.children())[:-1])
-        """if model = torch.nn.DataParallel(model) above, add module"""
-	# new_classifier = nn.Sequential(*list(model.module.classifier.children())[:-1])
         model.classifier = new_classifier
         # model.features = torch.nn.DataParallel(model.features)
     	# torch.save(model, 'alexnet_trained.pth')
@@ -286,26 +293,15 @@ def main():
 
 def use_trained_model():
 
-    if 0:
-    	model = torch.load('resnet_trained.pth')
     if 1:
+    	model = torch.load('resnet_trained.pth')
+    if 0:
     	model = torch.load('alexnet_trained.pth')
+    if 0:
+	model = TheModelClass(*args, **kwargs)
+    	model.load_state_dict(torch.load('state_dict_resnet_trained.pth'))
     
     # print(model)
-    '''class AlexNetNoClassifier(nn.Module):
-	def __init__(self):
-	    super(AlexNetNoClassifier, self).__init__()
-	    self.features = nn.Sequential(
-	    	*list(model.features.children())[:]
-	    )
-	def forward(self, x):
-	    x = self.features(x)
-	    x = x.view(x.size(0), 256*6*6)
-	    return x
-    new_model = AlexNetNoClassifier()
-    print(new_model)
-    score_array = cmc(new_model)
-    '''
 
     score_array = cmc(model)
     print(score_array)
