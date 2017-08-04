@@ -7,6 +7,9 @@ import time
 import datetime
 import shutil
 import numpy as np
+import scipy.misc
+import scipy.io as sio
+from tqdm import tqdm
 import torch
 from torchvision import datasets, transforms
 from torchvision import models
@@ -23,8 +26,8 @@ from utils import Logger, AverageMeter, accuracy, mkdir_p, savefig
 
 # Training settings
 parser = argparse.ArgumentParser(description='PyTorch CUHK03 Example')
-parser.add_argument('--train-batch-size', type=int, default=20, metavar='N',
-                    help='input batch size for training (default: 20)')
+parser.add_argument('--train-batch-size', type=int, default=160, metavar='N',
+                    help='input batch size for training (default: 160)')
 parser.add_argument('--test-batch-size', type=int, default=10, metavar='N',
                     help='input batch size for testing (default: 10)')
 parser.add_argument('--epochs', type=int, default=60, metavar='N',
@@ -60,7 +63,7 @@ def _get_train_data(train, group):
         temp = []
         num_of_same_image_array = []
         num_sample_total = 0
-        for i in range(class_num):
+        for i in tqdm(range(class_num)):
             num_of_same_image = len(ff[group][train][str(i)])
             num_sample_total += num_of_same_image
             num_of_same_image_array.append(num_of_same_image)
@@ -87,9 +90,8 @@ def _get_train_data(train, group):
 # get validation dataset of five camera pairs
 def _get_data(val_or_test):
     with h5py.File('triplet-cuhk-03.h5','r') as ff:
-	num = 100
-	num1 = 100
-	num2 = 100
+	num1 = 30
+	num2 = 30
 	a = np.array([ff['a'][val_or_test][str(i)][1] for i in range(num1)])
 	b = np.array([ff['b'][val_or_test][str(i)][1] for i in range(num2)])
 	a_trans = a.transpose(0, 3, 1, 2)
@@ -97,13 +99,13 @@ def _get_data(val_or_test):
 	camere1 = torch.from_numpy(a_trans)
 	camere2 = torch.from_numpy(b_trans)
         transform = transforms.Normalize(mean=[0.367, 0.362, 0.357], std=[0.244, 0.247, 0.249])
-        # for j in range(num):
-            # camere1[j] = transform(camere1[j])
-            # camere2[j] = transform(camere2[j])
+
+	
         for j in range(num1):
             camere1[j] = transform(camere1[j])
         for j in range(num2):
             camere2[j] = transform(camere2[j])
+	
 
         return camere1, camere2
 
@@ -164,16 +166,24 @@ def cmc(model, val_or_test='test'):
 
         # camera1 as probe, camera2 as gallery
         def _cmc_curve(model, camera1, camera2, rank_max=20):
-            # num = 100  # 100
-            num1 = 100  # camera1
-            num2 = 100  # camera2
+            num1 = 30  # camera1
+            num2 = 30  # camera2
             rank = []
             score = []
-            # camera_batch1 = camera1
             camera_batch1 = camera2
             camera1 = camera1.float()
-            camera_batch1 = camera_batch1.float()
             camera2 = camera2.float()
+            camera_batch1 = camera_batch1.float()
+	    if 0:
+		probe = camera1.numpy()
+		probe_img = probe.transpose(0, 2, 3, 1)
+		file_path = 'probe_with_its_top5/'
+		directory = os.path.dirname(file_path)
+		if not os.path.exists(directory):
+		    os.makedirs(directory)
+		for k in range(6):
+		    scipy.misc.imsave(directory+'/probe'+str(k)+'.png', probe_img[k])
+
             if args.cuda:
                 camera1, camera_batch1, camera2 = camera1.cuda(), camera_batch1.cuda(), camera2.cuda()
 
@@ -195,16 +205,23 @@ def cmc(model, val_or_test='test'):
 
 		distance = torch.squeeze(dist_batch)
 		dist_value, dist_indices = torch.sort(distance)
-                dist_indices = dist_indices.cpu().data.numpy()
+                dist_indices = dist_indices.data.cpu().numpy()
 		
 		'''
-                dist_np = dist_batch.cpu().data.numpy()
-
-        	# dist_np = np.reshape(dist_np, (num))
+                dist_np = dist_batch.data.cpu().numpy()
         	dist_np = np.reshape(dist_np, (num2))
-
                 dist_indices = np.argsort(dist_np)
 		'''		
+		
+	        if 0:
+		    similar = camera2.data.cpu().numpy()
+		    similar_img = similar.transpose(0, 2, 3, 1)
+		    file_path = 'probe_with_its_top5/'
+		    directory = os.path.dirname(file_path)
+		    if not os.path.exists(directory):
+		        os.makedirs(directory)
+		    for k in dist_indices[:4]:
+		        scipy.misc.imsave(directory+'/similar'+str(i)+'_'+str(k)+'.png', similar_img[k])
 
         	if i < 30:
         	    print(dist_indices[:10])
@@ -240,6 +257,12 @@ def main():
         mkdir_p(args.checkpoint)
 
     if 1:
+        model = models.resnet50(pretrained=True)
+        num_ftrs = model.fc.in_features
+        model.fc = nn.Linear(num_ftrs, class_num)
+        model = torch.nn.DataParallel(model)
+	# print(model)
+    if 0:
         model = models.resnet18(pretrained=True)
         num_ftrs = model.fc.in_features
         model.fc = nn.Linear(num_ftrs, class_num)
@@ -276,13 +299,17 @@ def main():
         model = nn.Sequential(*list(model.module.children())[:-1])
 	# print(model)
         # model = torch.nn.DataParallel(model)
-    	# torch.save(model, 'resnet_trained.pth')
-    	torch.save(model.state_dict(), 'state_dict_resnet_trained.pth')
+    	torch.save(model, 'resnet50_trained.pth')
+    if 0:
+        model = nn.Sequential(*list(model.module.children())[:-1])
+	# print(model)
+        # model = torch.nn.DataParallel(model)
+    	torch.save(model, 'resnet_trained.pth')
     if 0:
         new_classifier = nn.Sequential(*list(model.classifier.children())[:-1])
         model.classifier = new_classifier
         # model.features = torch.nn.DataParallel(model.features)
-    	# torch.save(model, 'alexnet_trained.pth')
+    	torch.save(model, 'alexnet_trained.pth')
 
 
     score_array = cmc(model)
@@ -293,13 +320,12 @@ def main():
 
 def use_trained_model():
 
-    if 1:
+    if 0:
+    	model = torch.load('resnet50_trained.pth')
+    if 0:
     	model = torch.load('resnet_trained.pth')
-    if 0:
+    if 1:
     	model = torch.load('alexnet_trained.pth')
-    if 0:
-	model = TheModelClass(*args, **kwargs)
-    	model.load_state_dict(torch.load('state_dict_resnet_trained.pth'))
     
     # print(model)
 

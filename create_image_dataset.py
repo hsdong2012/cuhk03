@@ -36,9 +36,10 @@ def create_dataset(file_path):
         tes_index = (f[f['testsets'][0][1]][:].T - 1).tolist()
 
         #use camera pair 1-5
-        for i in xrange(5):
+        for i in xrange(2,3):
             for k in xrange(f[f['labeled'][0][i]][0].size):
                 print i,k
+		"""
                 for j in it.chain(xrange(1, 5), xrange(6, 10)):
                     if len(f[f[f['labeled'][0][i]][j][k]].shape) == 3:
                         img1 = np.array(f[f[f['labeled'][0][i]][j][k]][:]).transpose(2,1,0)
@@ -49,8 +50,9 @@ def create_dataset(file_path):
                             os.makedirs(directory)
                         scipy.misc.imsave(directory+'/'+str(j)+'.png', img1)
                 # sys.exit('exit')
+		"""
                 # if [i,k] in val_index:
-                if 1:
+                if 0:
                     for j in it.chain(xrange(1), xrange(5, 6)):
                         if len(f[f[f['labeled'][0][i]][j][k]].shape) == 3:
                             img1 = np.array(f[f[f['labeled'][0][i]][j][k]][:]).transpose(2,1,0)
@@ -61,13 +63,23 @@ def create_dataset(file_path):
                                 os.makedirs(directory)
                             scipy.misc.imsave(directory+'/'+str(j)+'.png', img1)
 
-                # if [i,k] in tes_index:
-                if 0:
-                    for j in it.chain(xrange(1), xrange(5, 6)):
+                if [i,k] in tes_index:
+                # if 0:
+                    # for j in it.chain(xrange(1), xrange(5, 6)):
+                    for j in xrange(5):
                         if len(f[f[f['labeled'][0][i]][j][k]].shape) == 3:
                             img1 = np.array(f[f[f['labeled'][0][i]][j][k]][:]).transpose(2,1,0)
-                            img1 = scipy.misc.imresize(img1, (224,224))
-                            file_path = 'test/id'+str(k)+'/'
+                            img1 = scipy.misc.imresize(img1, (160,60))
+                            file_path = 'test_a/id'+str(k)+'/'
+                            directory = os.path.dirname(file_path)
+                            if not os.path.exists(directory):
+                                os.makedirs(directory)
+                            scipy.misc.imsave(directory+'/'+str(j)+'.png', img1)
+                    for j in xrange(5,10):
+                        if len(f[f[f['labeled'][0][i]][j][k]].shape) == 3:
+                            img1 = np.array(f[f[f['labeled'][0][i]][j][k]][:]).transpose(2,1,0)
+                            img1 = scipy.misc.imresize(img1, (160,60))
+                            file_path = 'test_b/id'+str(k)+'/'
                             directory = os.path.dirname(file_path)
                             if not os.path.exists(directory):
                                 os.makedirs(directory)

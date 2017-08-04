@@ -310,7 +310,7 @@ def main():
         new_model.cuda()
     '''
 
-    
+    """ 
     model_name = 'resnet50'
     original_model = models.resnet50(pretrained=True)
     new_model = nn.Sequential(*list(original_model.children())[:-1])
@@ -318,16 +318,16 @@ def main():
     if args.cuda:
         new_model.cuda()
     # print(new_model)
-    
-
     """
+
+    
     model_name = 'resnet18'
     original_model = models.resnet18(pretrained=True)
     new_model = nn.Sequential(*list(original_model.children())[:-1])
     new_model = torch.nn.DataParallel(new_model)
     if args.cuda:
         new_model.cuda()
-    """
+    
 
     triplet_dataset, triplet_label = _get_triplet_data()
     print('train data  size: ', triplet_dataset.size())
@@ -335,7 +335,8 @@ def main():
     train_data = data_utils.TensorDataset(triplet_dataset, triplet_label)
     train_loader = data_utils.DataLoader(train_data, batch_size=args.train_batch_size, shuffle=True)
 
-    optimizer = optim.SGD(new_model.parameters(), lr=args.lr, momentum=args.momentum, weight_decay=args.weight_decay)
+    # optimizer = optim.SGD(new_model.parameters(), lr=args.lr, momentum=args.momentum, weight_decay=args.weight_decay)
+    optimizer = optim.Adam(new_model.parameters(), lr=args.lr, betas=(0.9,0.999), eps=1e-08, weight_decay=args.weight_decay)
 
     criterion = nn.TripletMarginLoss(margin=4.0, p=2)
     if args.cuda:
