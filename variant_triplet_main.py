@@ -249,7 +249,7 @@ def cmc(model, val_or_test='test'):
             feature1_batch = model(camera_batch1) # with size 100 * 4096
             feature1_batch = torch.squeeze(feature1_batch)
 
-	    pdist = nn.PairwiseDistance(2)
+            pdist = nn.PairwiseDistance(2)
             dist_batch = pdist(feature1_batch, feature2_batch)  # with size 100 * 1
             # dist_batch = variant_pairwise_distance(feature1_batch, feature2_batch)  # with size 100 * 1
             distance = torch.squeeze(dist_batch)
@@ -313,7 +313,7 @@ def main():
         new_model.cuda()
     '''
 
-    
+
     model_name = 'resnet50'
     original_model = models.resnet50(pretrained=True)
     new_model = nn.Sequential(*list(original_model.children())[:-1])
@@ -321,7 +321,7 @@ def main():
     if args.cuda:
         new_model.cuda()
     # print(new_model)
-    
+
 
     '''
     model_name = 'resnet18'

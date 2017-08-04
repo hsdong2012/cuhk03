@@ -67,12 +67,12 @@ def _get_triplet_data():
         class_num = len(ff['a']['train'].keys())
         temp_a = []
         temp_b = []
-	a_temp = []
-	b_temp = []
+        a_temp = []
+        b_temp = []
         temp_id = []
         for i in range(class_num):
-	    len1 = len(ff['a']['train'][str(i)])
-	    len2 = len(ff['b']['train'][str(i)])
+            len1 = len(ff['a']['train'][str(i)])
+            len2 = len(ff['b']['train'][str(i)])
             if len1 < 5 or len2 < 5:
                 class_num -= 1
             if len1 >= 5 and len2 >= 5:
@@ -80,25 +80,24 @@ def _get_triplet_data():
                     temp_id.append(i)
                     temp_a.append(np.array(ff['a']['train'][str(i)][k]))
                     temp_b.append(np.array(ff['b']['train'][str(i)][k]))
-		a_temp.append(temp_a)
-		b_temp.append(temp_b)
-		temp_a = []
-		temp_b = []
+                a_temp.append(temp_a)
+                b_temp.append(temp_b)
+                temp_a = []
+                temp_b = []
 
-      
         imageset_a = np.array(a_temp)
         imageset_b = np.array(b_temp)
         a_trans = imageset_a.transpose(0, 1, 4, 2, 3)
         b_trans = imageset_b.transpose(0, 1, 4, 2, 3)
         a_tensor = torch.from_numpy(a_trans)
         b_tensor = torch.from_numpy(b_trans)
-	# print(a_tensor.size())
-	
+        # print(a_tensor.size())
+
         transform = transforms.Normalize(mean=[0.367, 0.362, 0.357], std=[0.244, 0.247, 0.249])
         for j in range(class_num):
-	    for k in range(5):
-            	a_tensor[j][k] = transform(a_tensor[j][k])
-            	b_tensor[j][k] = transform(b_tensor[j][k])
+            for k in range(5):
+                a_tensor[j][k] = transform(a_tensor[j][k])
+                b_tensor[j][k] = transform(b_tensor[j][k])
 
         pair_num = 20*class_num
         # pair_num = 20000
@@ -106,10 +105,9 @@ def _get_triplet_data():
         triplet_temp = torch.FloatTensor(pair_num, 3, a_tensor.size(2), a_tensor.size(3), a_tensor.size(4)).zero_()
         triplet_id_temp = torch.LongTensor(pair_num, 3).zero_()
 
-
-	i = 0
+        i = 0
         for j in range(20):
-	    for k in range(class_num):
+            for k in range(class_num):
                 range_no_k = range_except_k(k, class_num)
                 k1 = random.choice(range_no_k)
                 j0 = random.randint(0, 4)
@@ -121,8 +119,8 @@ def _get_triplet_data():
                 triplet_id_temp[i][1] = k
                 triplet_temp[i][2] = b_tensor[k1][j2]
                 triplet_id_temp[i][2] = k1
-		i += 1
-	
+            i += 1
+
         """
         for i in range(pair_num):
             k = random.randint(0, class_num-1)
@@ -137,11 +135,11 @@ def _get_triplet_data():
             triplet_id_temp[i][1] = k
             triplet_temp[i][2] = b_tensor[k1][j2]
             triplet_id_temp[i][2] = k1
-	"""
+        """
 
         triplet_dataset = triplet_temp
         triplet_label = triplet_id_temp
-        
+
         return triplet_dataset, triplet_label
 
 
@@ -170,7 +168,7 @@ def _get_data(val_or_test):
 
 
 def tensor_normalize(input, p=2.0, dim=1, eps=1e-12):
-    
+
     return input / input.norm(p, dim).clamp(min=eps).expand_as(input)
 
 
@@ -181,38 +179,35 @@ def train_model(train_loader, model, criterion, optimizer, epoch):
     losses = AverageMeter()
 
     for batch_idx, (inputs, targets) in enumerate(train_loader):
-       
-	"""method1: split and squeeze"""
-	triplet_pair = torch.split(inputs, 1, 1)
+
+        """method1: split and squeeze"""
+        triplet_pair = torch.split(inputs, 1, 1)
         anchor = torch.squeeze(triplet_pair[0])
-	positive = torch.squeeze(triplet_pair[1])
-	negative = torch.squeeze(triplet_pair[2])
+        positive = torch.squeeze(triplet_pair[1])
+        negative = torch.squeeze(triplet_pair[2])
+        if args.cuda:
+            anchor, positive, negative = anchor.cuda(), positive.cuda(), negative.cuda()
+        anchor, positive, negative = Variable(anchor), Variable(positive), Variable(negative)
+        outputs1, outputs2, outputs3 = model(anchor), model(positive), model(negative)
+        '''
+        inputs_cat = Variable(torch.cat((anchor, positive, negative), 0)).cuda()
+        outputs_cat = model(inputs_cat)
+        outputs_split = torch.split(outputs_cat, anchor.size(0), 0)
+        outputs1 = outputs_split[0]
+        outputs2 = outputs_split[1]
+        outputs3 = outputs_split[2]
+        '''
+        outputs1, outputs2, outputs3 = torch.squeeze(outputs1), torch.squeeze(outputs2), torch.squeeze(outputs3)
+        # outputs1, outputs2, outputs3 = tensor_normalize(outputs1), tensor_normalize(outputs2), tensor_normalize(outputs3)
 
-	if args.cuda:
-	    anchor, positive, negative = anchor.cuda(), positive.cuda(), negative.cuda()
-	anchor, positive, negative = Variable(anchor), Variable(positive), Variable(negative)
-	outputs1, outputs2, outputs3 = model(anchor), model(positive), model(negative)
-
-	'''
-	inputs_cat = Variable(torch.cat((anchor, positive, negative), 0)).cuda()
-	outputs_cat = model(inputs_cat)
-	outputs_split = torch.split(outputs_cat, anchor.size(0), 0)
-	outputs1 = outputs_split[0]
-	outputs2 = outputs_split[1]
-	outputs3 = outputs_split[2]
-	'''
-
-	outputs1, outputs2, outputs3 = torch.squeeze(outputs1), torch.squeeze(outputs2), torch.squeeze(outputs3)
-	# outputs1, outputs2, outputs3 = tensor_normalize(outputs1), tensor_normalize(outputs2), tensor_normalize(outputs3)
-	
-	# compute loss
+        # compute loss
         loss = criterion(outputs1, outputs2, outputs3)
-	losses.update(loss.data[0], anchor.size(0))
-
+        losses.update(loss.data[0], anchor.size(0))
         # compute gradient and do SGD step
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
+
         if batch_idx % args.log_interval == 0:
             print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.4f}'.format(
                 epoch, batch_idx * len(inputs), len(train_loader.dataset),
@@ -240,13 +235,13 @@ def cmc(model, val_or_test='test'):
             camera1, camera_batch1, camera2 = camera1.cuda(), camera_batch1.cuda(), camera2.cuda()
         camera1, camera_batch1, camera2 = Variable(camera1), Variable(camera_batch1), Variable(camera2)
         feature2_batch = model(camera2)       # with size 100 * 4096
-	feature2_batch = torch.squeeze(feature2_batch)
+        feature2_batch = torch.squeeze(feature2_batch)
 
         for i in range(num1):
             for j in range(num2):
                 camera_batch1[j] = camera1[i]
             feature1_batch = model(camera_batch1) # with size 100 * 4096
-	    feature1_batch = torch.squeeze(feature1_batch)
+            feature1_batch = torch.squeeze(feature1_batch)
             pdist = nn.PairwiseDistance(2)
             dist_batch = pdist(feature1_batch, feature2_batch)  # with size 100 * 1
             dist_np = dist_batch.cpu().data.numpy()
@@ -264,8 +259,8 @@ def cmc(model, val_or_test='test'):
             rank_val = rank_val + len([j for j in rank if i == j-1])
             score.append(rank_val / float(num1))
 
-	score_array = np.array(score)
-	print(score_array)
+        score_array = np.array(score)
+        print(score_array)
         print('Top1(accuracy) : {:.3f}\t''Top5(accuracy) : {:.3f}\t''Top10(accuracy) : {:.3f}'.format(score_array[0], score_array[4], score_array[9]))
 
         return score_array
@@ -286,9 +281,9 @@ def main():
     if args.cuda:
 	new_model.cuda()
     """
-    
+
     '''
-    model_name = 'alexnet' 
+    model_name = 'alexnet'
     ori_model = models.alexnet(pretrained=True)
     # print(ori_model.features._modules['3'].weight)
     class AlexNetNoClassifier(nn.Module):
@@ -310,7 +305,7 @@ def main():
         new_model.cuda()
     '''
 
-    
+
     model_name = 'resnet50'
     original_model = models.resnet50(pretrained=True)
     new_model = nn.Sequential(*list(original_model.children())[:-1])
@@ -318,7 +313,7 @@ def main():
     if args.cuda:
         new_model.cuda()
     # print(new_model)
-    
+
 
     """
     model_name = 'resnet18'
@@ -342,7 +337,7 @@ def main():
         criterion = nn.TripletMarginLoss(margin=4.0, p=2).cuda()
 
     if not os.path.isdir(args.checkpoint):
-	mkdir_p(args.checkpoint)
+        mkdir_p(args.checkpoint)
     title = 'CUHK03-Dataset'
     date_time = get_datetime()
     log_filename = 'log-triplet-'+str(triplet_dataset.size(0))+'-'+model_name+'-'+date_time+'.txt'
@@ -355,8 +350,8 @@ def main():
         print('\nEpoch: [%d | %d] LR: %f' % (epoch, args.epochs, lr))
         print()
         loss = train_model(train_loader, new_model, criterion, optimizer, epoch)
-    	score_array = cmc(new_model)
-	logger.append([lr, loss, score_array[0], score_array[4], score_array[9]])
+        score_array = cmc(new_model)
+        logger.append([lr, loss, score_array[0], score_array[4], score_array[9]])
 
     logger.close()
 
