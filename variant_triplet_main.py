@@ -22,18 +22,19 @@ import torch.backends.cudnn as cudnn
 import torch.optim as optim
 from torch.autograd import Variable
 from utils import Logger, AverageMeter, accuracy, mkdir_p, savefig
-from function import variant_pairwise_distance, variant_triplet_margin_loss
+# from function import variant_pairwise_distance, variant_triplet_margin_loss
+from function import *
 
 # Training settings
 parser = argparse.ArgumentParser(description='PyTorch CUHK03 Example')
-parser.add_argument('--train-batch-size', type=int, default=160, metavar='N',
+parser.add_argument('--train-batch-size', type=int, default=120, metavar='N',
                     help='input batch size for training (default: 160)')
 parser.add_argument('--test-batch-size', type=int, default=10, metavar='N',
                     help='input batch size for testing (default: 10)')
 parser.add_argument('--epochs', type=int, default=40, metavar='N',
                     help='number of epochs to train (default: 60)')
 # lr=0.1 for resnet, 0.01 for alexnet and vgg
-parser.add_argument('--lr', type=float, default=0.1, metavar='LR',
+parser.add_argument('--lr', type=float, default=0.05, metavar='LR',
                     help='learning rate (default: 0.1)')
 parser.add_argument('--momentum', type=float, default=0.005, metavar='M',
                     help='SGD momentum (default: 0.5)')
@@ -46,7 +47,7 @@ parser.add_argument('--seed', type=int, default=1, metavar='S',
 parser.add_argument('--log-interval', type=int, default=2, metavar='N',
                     help='how many batches to wait before logging training status')
 # Checkpoints
-parser.add_argument('-c', '--checkpoint', default='triplet_main_checkpoint', type=str, metavar='PATH',
+parser.add_argument('-c', '--checkpoint', default='variant_triplet_main_checkpoint', type=str, metavar='PATH',
                     help='path to save checkpoint (default: cuhk03_checkpoint)')
 
 args = parser.parse_args()
@@ -80,10 +81,10 @@ def _get_triplet_data():
                     temp_id.append(i)
                     temp_a.append(np.array(ff['a']['train'][str(i)][k]))
                     temp_b.append(np.array(ff['b']['train'][str(i)][k]))
-            a_temp.append(temp_a)
-            b_temp.append(temp_b)
-            temp_a = []
-            temp_b = []
+                a_temp.append(temp_a)
+                b_temp.append(temp_b)
+                temp_a = []
+                temp_b = []
 
 
         imageset_a = np.array(a_temp)
@@ -212,6 +213,7 @@ def train_model(train_loader, model, criterion, optimizer, epoch):
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
+
         if batch_idx % args.log_interval == 0:
             print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.4f}'.format(
                 epoch, batch_idx * len(inputs), len(train_loader.dataset),
@@ -247,9 +249,11 @@ def cmc(model, val_or_test='test'):
             feature1_batch = model(camera_batch1) # with size 100 * 4096
             feature1_batch = torch.squeeze(feature1_batch)
 
-            dist_batch = variant_pairwise_distance(feature1_batch, feature2_batch)  # with size 100 * 1
+	    pdist = nn.PairwiseDistance(2)
+            dist_batch = pdist(feature1_batch, feature2_batch)  # with size 100 * 1
+            # dist_batch = variant_pairwise_distance(feature1_batch, feature2_batch)  # with size 100 * 1
             distance = torch.squeeze(dist_batch)
-    		dist_value, dist_indices = torch.sort(distance)
+            dist_value, dist_indices = torch.sort(distance)
             dist_indices = dist_indices.data.cpu().numpy()
 
             # if i < 20:
@@ -309,7 +313,7 @@ def main():
         new_model.cuda()
     '''
 
-    """
+    
     model_name = 'resnet50'
     original_model = models.resnet50(pretrained=True)
     new_model = nn.Sequential(*list(original_model.children())[:-1])
@@ -317,15 +321,16 @@ def main():
     if args.cuda:
         new_model.cuda()
     # print(new_model)
-    """
+    
 
+    '''
     model_name = 'resnet18'
     original_model = models.resnet18(pretrained=True)
     new_model = nn.Sequential(*list(original_model.children())[:-1])
     new_model = torch.nn.DataParallel(new_model)
     if args.cuda:
         new_model.cuda()
-
+    '''
 
     triplet_dataset, triplet_label = _get_triplet_data()
     print('train data  size: ', triplet_dataset.size())
@@ -333,11 +338,12 @@ def main():
     train_data = data_utils.TensorDataset(triplet_dataset, triplet_label)
     train_loader = data_utils.DataLoader(train_data, batch_size=args.train_batch_size, shuffle=True)
 
-    optimizer = optim.Adam(new_model.parameters(), lr=args.lr, betas=(0.9,0.999), eps=1e-08, weight_decay=args.weight_decay)
+    # optimizer = optim.Adam(new_model.parameters(), lr=args.lr, betas=(0.9,0.999), eps=1e-08, weight_decay=args.weight_decay)
+    optimizer = optim.SGD(new_model.parameters(), lr=args.lr, momentum=args.momentum, weight_decay=args.weight_decay)
 
-    criterion = variant_triplet_margin_loss(margin=1.0)
+    criterion = nn.TripletMarginLoss(margin=4.0, p=2)
     if args.cuda:
-        criterion = variant_triplet_margin_loss(margin=1.0).cuda()
+        criterion = nn.TripletMarginLoss(margin=4.0, p=2).cuda()
 
     if not os.path.isdir(args.checkpoint):
         mkdir_p(args.checkpoint)
