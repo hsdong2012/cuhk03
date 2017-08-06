@@ -146,7 +146,6 @@ def _get_triplet_data():
 # get validation dataset of five camera pairs
 def _get_data(val_or_test):
     with h5py.File('cuhk-03.h5','r') as ff:
-    	# num = 100
     	num1 = 80  # camera1, probe
         num2 = 80  # camera2, gallery, 100 >= num2 >= num1
     	a = np.array([ff['a'][val_or_test][str(i)][1] for i in range(num1)])
@@ -156,9 +155,7 @@ def _get_data(val_or_test):
     	camere1 = torch.from_numpy(a_trans)
     	camere2 = torch.from_numpy(b_trans)
         transform = transforms.Normalize(mean=[0.367, 0.362, 0.357], std=[0.244, 0.247, 0.249])
-        # for j in range(num):
-            # camere1[j] = transform(camere1[j])
-            # camere2[j] = transform(camere2[j])
+
         for j in range(num1):
             camere1[j] = transform(camere1[j])
         for j in range(num2):
@@ -180,7 +177,6 @@ def train_model(train_loader, model, criterion, optimizer, epoch):
 
     for batch_idx, (inputs, targets) in enumerate(train_loader):
 
-        """method1: split and squeeze"""
         triplet_pair = torch.split(inputs, 1, 1)
         anchor = torch.squeeze(triplet_pair[0])
         positive = torch.squeeze(triplet_pair[1])
@@ -203,7 +199,6 @@ def train_model(train_loader, model, criterion, optimizer, epoch):
         
 
         outputs1, outputs2, outputs3 = torch.squeeze(outputs1), torch.squeeze(outputs2), torch.squeeze(outputs3)
-        # outputs1, outputs2, outputs3 = tensor_normalize(outputs1), tensor_normalize(outputs2), tensor_normalize(outputs3)
 
         # compute loss
         loss = criterion(outputs1, outputs2, outputs3)
@@ -369,8 +364,8 @@ def main():
 
 def use_trained_model():
 
-    # model = torch.load('triplet_resnet50_trained.pth')
-    model = torch.load('triplet_resnet_trained.pth')
+    model = torch.load('triplet_resnet50_trained.pth')
+    # model = torch.load('triplet_resnet_trained.pth')
     # model = torch.load('triplet_alexnet_trained.pth')
 
     model = torch.nn.DataParallel(model)

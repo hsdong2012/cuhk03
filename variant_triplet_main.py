@@ -22,7 +22,6 @@ import torch.backends.cudnn as cudnn
 import torch.optim as optim
 from torch.autograd import Variable
 from utils import Logger, AverageMeter, accuracy, mkdir_p, savefig
-# from function import variant_pairwise_distance, variant_triplet_margin_loss
 from function import *
 
 # Training settings
@@ -143,22 +142,6 @@ def _get_triplet_data():
                 i += 1
 	
 
-        """
-        for i in range(pair_num):
-            k = random.randint(0, class_num-1)
-            range_no_k = range_except_k(k, class_num)
-            k1 = random.choice(range_no_k)
-            j0 = random.randint(0, 2)
-            j1 = random.randint(0, 2)
-            j2 = random.randint(0, 2)
-            triplet_temp[i][0] = a_tensor[k][j0]
-            triplet_id_temp[i][0] = k
-            triplet_temp[i][1] = b_tensor[k][j1]
-            triplet_id_temp[i][1] = k
-            triplet_temp[i][2] = b_tensor[k1][j2]
-            triplet_id_temp[i][2] = k1
-        """
-
         triplet_dataset = triplet_temp
         triplet_label = triplet_id_temp
 
@@ -168,7 +151,6 @@ def _get_triplet_data():
 # get validation dataset of five camera pairs
 def _get_data(val_or_test):
     with h5py.File('cuhk-03.h5','r') as ff:
-    	# num = 100
     	num1 = 80  # camera1, probe
         num2 = 80  # camera2, gallery, 100 >= num2 >= num1
     	a = np.array([ff['a'][val_or_test][str(i)][0] for i in range(num1)])
@@ -178,21 +160,13 @@ def _get_data(val_or_test):
     	camere1 = torch.from_numpy(a_trans)
     	camere2 = torch.from_numpy(b_trans)
         transform = transforms.Normalize(mean=[0.367, 0.362, 0.357], std=[0.244, 0.247, 0.249])
-        # for j in range(num):
-            # camere1[j] = transform(camere1[j])
-            # camere2[j] = transform(camere2[j])
+
         for j in range(num1):
             camere1[j] = transform(camere1[j])
         for j in range(num2):
             camere2[j] = transform(camere2[j])
 
         return (camere1, camere2)
-
-
-def tensor_normalize(input, p=2.0, dim=1, eps=1e-12):
-
-    return input / input.norm(p, dim).clamp(min=eps).expand_as(input)
-
 
 
 def train_model(train_loader, model, optimizer, epoch):
@@ -202,18 +176,10 @@ def train_model(train_loader, model, optimizer, epoch):
 
     for batch_idx, (inputs, targets) in enumerate(train_loader):
 
-        """method1: split and squeeze"""
         triplet_pair = torch.split(inputs, 1, 1)
         anchor = torch.squeeze(triplet_pair[0])
         positive = torch.squeeze(triplet_pair[1])
         negative = torch.squeeze(triplet_pair[2])
-
-	"""
-        if args.cuda:
-            anchor, positive, negative = anchor.cuda(), positive.cuda(), negative.cuda()
-        anchor, positive, negative = Variable(anchor), Variable(positive), Variable(negative)
-        outputs1, outputs2, outputs3 = model(anchor), model(positive), model(negative)
-	"""
 
         inputs_cat = Variable(torch.cat((anchor, positive, negative), 0)).cuda()
         outputs_cat = model(inputs_cat)
@@ -223,10 +189,8 @@ def train_model(train_loader, model, optimizer, epoch):
         outputs3 = outputs_split[2]
         
         outputs1, outputs2, outputs3 = torch.squeeze(outputs1), torch.squeeze(outputs2), torch.squeeze(outputs3)
-        # outputs1, outputs2, outputs3 = tensor_normalize(outputs1), tensor_normalize(outputs2), tensor_normalize(outputs3)
 
         # compute loss
-        # loss = criterion(outputs1, outputs2, outputs3)
         loss = variant_triplet_margin_loss(outputs1, outputs2, outputs3, margin=3.0)
         losses.update(loss.data[0], anchor.size(0))
 
@@ -300,41 +264,6 @@ def cmc(model, val_or_test='test'):
 
 def main():
 
-    """
-    model_name = 'alexnet'
-    ori_model = models.alexnet(pretrained=True)
-    new_model = ori_model
-    new_classifier = nn.Sequential(*list(ori_model.classifier.children())[:-1])
-    new_model.classifier = new_classifier
-    new_model.features = torch.nn.DataParallel(new_model.features)
-    if args.cuda:
-	new_model.cuda()
-    """
-
-    '''
-    model_name = 'alexnet'
-    ori_model = models.alexnet(pretrained=True)
-    # print(ori_model.features._modules['3'].weight)
-    class AlexNetNoClassifier(nn.Module):
-            def __init__(self):
-                super(AlexNetNoClassifier, self).__init__()
-                self.features = nn.Sequential(
-                    *list(ori_model.features.children())[:]
-                )
-            def forward(self, x):
-                x = self.features(x)
-                x = x.view(x.size(0), 256 * 6 * 6)
-                return x
-
-    new_model = AlexNetNoClassifier()
-    # print(new_model)
-    # print(new_model.features._modules['3'].weight)
-    new_model.features = torch.nn.DataParallel(new_model.features)
-    if args.cuda:
-        new_model.cuda()
-    '''
-
-
     model_name = 'resnet50'
     original_model = models.resnet50(pretrained=True)
     num_ftrs = original_model.fc.in_features
@@ -349,17 +278,7 @@ def main():
     if args.cuda:
         new_model.cuda()
     print(new_model)
-    # sys.exit('exit')
 
-
-    '''
-    model_name = 'resnet18'
-    original_model = models.resnet18(pretrained=True)
-    new_model = nn.Sequential(*list(original_model.children())[:-1])
-    new_model = torch.nn.DataParallel(new_model)
-    if args.cuda:
-        new_model.cuda()
-    '''
 
     triplet_dataset, triplet_label = _get_triplet_data()
     print('train data  size: ', triplet_dataset.size())
@@ -393,17 +312,13 @@ def main():
 
     logger.close()
 
-    # Test
-    # torch.save(new_model, 'triplet_resnet50_trained.pth')
-    # torch.save(new_model, 'triplet_resnet_trained.pth')
-    # torch.save(new_model, 'triplet_alexnet_trained.pth')
+    # save model
+    # torch.save(new_model, 'variant_triplet_resnet50_trained.pth')
 
 
 def use_trained_model():
 
-    # model = torch.load('triplet_resnet50_trained.pth')
-    # model = torch.load('triplet_resnet_trained.pth')
-    # model = torch.load('triplet_alexnet_trained.pth')
+    model = torch.load('variant_triplet_resnet50_trained.pth')
 
     score_array = cmc(model)
     print(score_array)

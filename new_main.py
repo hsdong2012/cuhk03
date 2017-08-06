@@ -202,31 +202,13 @@ def cmc(model, val_or_test='test'):
                 pdist = nn.PairwiseDistance(2)
                 dist_batch = pdist(feature1_batch, feature2_batch)  # with size 100 * 1
 
-
 		distance = torch.squeeze(dist_batch)
 		dist_value, dist_indices = torch.sort(distance)
                 dist_indices = dist_indices.data.cpu().numpy()
 		
-		'''
-                dist_np = dist_batch.data.cpu().numpy()
-        	dist_np = np.reshape(dist_np, (num2))
-                dist_indices = np.argsort(dist_np)
-		'''		
-		
-	        if 0:
-		    similar = camera2.data.cpu().numpy()
-		    similar_img = similar.transpose(0, 2, 3, 1)
-		    file_path = 'probe_with_its_top5/'
-		    directory = os.path.dirname(file_path)
-		    if not os.path.exists(directory):
-		        os.makedirs(directory)
-		    for k in dist_indices[:4]:
-		        scipy.misc.imsave(directory+'/similar'+str(i)+'_'+str(k)+'.png', similar_img[k])
-
         	if i < 30:
         	    print(dist_indices[:10])
 
-                # for k in range(num):
                 for k in range(num2):
                     if dist_indices[k] == i:
                         rank.append(k+1)
@@ -235,7 +217,6 @@ def cmc(model, val_or_test='test'):
             rank_val = 0
             for i in range(rank_max):
                 rank_val = rank_val + len([j for j in rank if i == j-1])
-                # score.append(rank_val / float(num))
                 score.append(rank_val / float(num1))
             return np.array(score)
 
