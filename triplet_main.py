@@ -26,11 +26,11 @@ from utils import Logger, AverageMeter, accuracy, mkdir_p, savefig
 
 # Training settings
 parser = argparse.ArgumentParser(description='PyTorch CUHK03 Example')
-parser.add_argument('--train-batch-size', type=int, default=160, metavar='N',
+parser.add_argument('--train-batch-size', type=int, default=240, metavar='N',
                     help='input batch size for training (default: 160)')
 parser.add_argument('--test-batch-size', type=int, default=10, metavar='N',
                     help='input batch size for testing (default: 10)')
-parser.add_argument('--epochs', type=int, default=40, metavar='N',
+parser.add_argument('--epochs', type=int, default=20, metavar='N',
                     help='number of epochs to train (default: 60)')
 # lr=0.1 for resnet, 0.01 for alexnet and vgg
 parser.add_argument('--lr', type=float, default=0.05, metavar='LR',
@@ -63,7 +63,7 @@ def range_except_k(n, end, start = 0):
 
 
 def _get_triplet_data():
-    with h5py.File('triplet-cuhk-03.h5', 'r') as ff:
+    with h5py.File('cuhk-03.h5', 'r') as ff:
         class_num = len(ff['a']['train'].keys())
         temp_a = []
         temp_b = []
@@ -73,10 +73,10 @@ def _get_triplet_data():
         for i in range(class_num):
             len1 = len(ff['a']['train'][str(i)])
             len2 = len(ff['b']['train'][str(i)])
-            if len1 < 5 or len2 < 5:
+            if len1 < 3 or len2 < 3:
                 class_num -= 1
-            if len1 >= 5 and len2 >= 5:
-                for k in range(5):
+            if len1 >= 3 and len2 >= 3:
+                for k in range(3):
                     temp_id.append(i)
                     temp_a.append(np.array(ff['a']['train'][str(i)][k]))
                     temp_b.append(np.array(ff['b']['train'][str(i)][k]))
@@ -95,40 +95,40 @@ def _get_triplet_data():
 
         transform = transforms.Normalize(mean=[0.367, 0.362, 0.357], std=[0.244, 0.247, 0.249])
         for j in range(class_num):
-            for k in range(5):
+            for k in range(3):
                 a_tensor[j][k] = transform(a_tensor[j][k])
                 b_tensor[j][k] = transform(b_tensor[j][k])
 
-        pair_num = 20*class_num
+        pair_num = 40*class_num
         # pair_num = 20000
 
         triplet_temp = torch.FloatTensor(pair_num, 3, a_tensor.size(2), a_tensor.size(3), a_tensor.size(4)).zero_()
         triplet_id_temp = torch.LongTensor(pair_num, 3).zero_()
 
         i = 0
-        for j in range(20):
+        for j in range(40):
             for k in range(class_num):
                 range_no_k = range_except_k(k, class_num)
                 k1 = random.choice(range_no_k)
-                j0 = random.randint(0, 4)
-                j1 = random.randint(0, 4)
-                j2 = random.randint(0, 4)
+                j0 = random.randint(0, 2)
+                j1 = random.randint(0, 2)
+                j2 = random.randint(0, 2)
                 triplet_temp[i][0] = a_tensor[k][j0]
                 triplet_id_temp[i][0] = k
                 triplet_temp[i][1] = b_tensor[k][j1]
                 triplet_id_temp[i][1] = k
                 triplet_temp[i][2] = b_tensor[k1][j2]
                 triplet_id_temp[i][2] = k1
-            i += 1
+                i += 1
 
         """
         for i in range(pair_num):
             k = random.randint(0, class_num-1)
             range_no_k = range_except_k(k, class_num)
             k1 = random.choice(range_no_k)
-            j0 = random.randint(0, 4)
-            j1 = random.randint(0, 4)
-            j2 = random.randint(0, 4)
+            j0 = random.randint(0, 2)
+            j1 = random.randint(0, 2)
+            j2 = random.randint(0, 2)
             triplet_temp[i][0] = a_tensor[k][j0]
             triplet_id_temp[i][0] = k
             triplet_temp[i][1] = b_tensor[k][j1]
@@ -145,10 +145,10 @@ def _get_triplet_data():
 
 # get validation dataset of five camera pairs
 def _get_data(val_or_test):
-    with h5py.File('triplet-cuhk-03.h5','r') as ff:
+    with h5py.File('cuhk-03.h5','r') as ff:
     	# num = 100
-    	num1 = 60  # camera1, probe
-        num2 = 60  # camera2, gallery, 100 >= num2 >= num1
+    	num1 = 80  # camera1, probe
+        num2 = 80  # camera2, gallery, 100 >= num2 >= num1
     	a = np.array([ff['a'][val_or_test][str(i)][1] for i in range(num1)])
     	b = np.array([ff['b'][val_or_test][str(i)][1] for i in range(num2)])
     	a_trans = a.transpose(0, 3, 1, 2)
@@ -185,18 +185,23 @@ def train_model(train_loader, model, criterion, optimizer, epoch):
         anchor = torch.squeeze(triplet_pair[0])
         positive = torch.squeeze(triplet_pair[1])
         negative = torch.squeeze(triplet_pair[2])
+
+	"""
         if args.cuda:
             anchor, positive, negative = anchor.cuda(), positive.cuda(), negative.cuda()
         anchor, positive, negative = Variable(anchor), Variable(positive), Variable(negative)
         outputs1, outputs2, outputs3 = model(anchor), model(positive), model(negative)
-        '''
+	"""
+
+        
         inputs_cat = Variable(torch.cat((anchor, positive, negative), 0)).cuda()
         outputs_cat = model(inputs_cat)
         outputs_split = torch.split(outputs_cat, anchor.size(0), 0)
         outputs1 = outputs_split[0]
         outputs2 = outputs_split[1]
         outputs3 = outputs_split[2]
-        '''
+        
+
         outputs1, outputs2, outputs3 = torch.squeeze(outputs1), torch.squeeze(outputs2), torch.squeeze(outputs3)
         # outputs1, outputs2, outputs3 = tensor_normalize(outputs1), tensor_normalize(outputs2), tensor_normalize(outputs3)
 
@@ -223,8 +228,8 @@ def cmc(model, val_or_test='test'):
     a,b = _get_data(val_or_test)
     # camera1 as probe, camera2 as gallery
     def _cmc_curve(model, camera1, camera2, rank_max=20):
-        num1 = 60  # camera1, probe
-        num2 = 60  # camera2, gallery, 100 >= num2 >= num1
+        num1 = 80  # camera1, probe
+        num2 = 80  # camera2, gallery, 100 >= num2 >= num1
         rank = []
         score = []
         camera_batch1 = camera2
@@ -247,8 +252,8 @@ def cmc(model, val_or_test='test'):
             dist_np = dist_batch.cpu().data.numpy()
             dist_np = np.reshape(dist_np, (num2))
             dist_sorted = np.argsort(dist_np)
-            # if i < 20:
-                # print(dist_sorted[:10])
+            if i < 30:
+                print(dist_sorted[:10])
             for k in range(num2):
                 if dist_sorted[k] == i:
                     rank.append(k+1)
@@ -282,7 +287,7 @@ def main():
 	new_model.cuda()
     """
 
-    '''
+    """
     model_name = 'alexnet'
     ori_model = models.alexnet(pretrained=True)
     # print(ori_model.features._modules['3'].weight)
@@ -303,7 +308,7 @@ def main():
     new_model.features = torch.nn.DataParallel(new_model.features)
     if args.cuda:
         new_model.cuda()
-    '''
+    """
 
 
     model_name = 'resnet50'
@@ -330,6 +335,7 @@ def main():
     train_data = data_utils.TensorDataset(triplet_dataset, triplet_label)
     train_loader = data_utils.DataLoader(train_data, batch_size=args.train_batch_size, shuffle=True)
 
+    # optimizer = optim.Adam(new_model.parameters(), lr=args.lr, betas=(0.9,0.999), eps=1e-08, weight_decay=args.weight_decay)
     optimizer = optim.SGD(new_model.parameters(), lr=args.lr, momentum=args.momentum, weight_decay=args.weight_decay)
 
     criterion = nn.TripletMarginLoss(margin=4.0, p=2)
@@ -363,10 +369,13 @@ def main():
 
 def use_trained_model():
 
-    model = torch.load('triplet_resnet50_trained.pth')
-    # model = torch.load('triplet_resnet_trained.pth')
+    # model = torch.load('triplet_resnet50_trained.pth')
+    model = torch.load('triplet_resnet_trained.pth')
     # model = torch.load('triplet_alexnet_trained.pth')
 
+    model = torch.nn.DataParallel(model)
+    if args.cuda:
+        model.cuda()
     score_array = cmc(model)
     print(score_array)
 

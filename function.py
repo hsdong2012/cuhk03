@@ -13,15 +13,17 @@ import torch.backends.cudnn as cudnn
 import torch.optim as optim
 from torch.autograd import Variable
 
-def variant_pairwise_distance(x1, x2):
+def variant_pairwise_distance(x1, x2, p=1, eps=1e-6):
     assert x1.size() == x2.size(), "Input sizes must be equal."
     assert x1.dim() == 2, "Input must be a 2D matrix."
     diff = torch.abs(x1 - x2)
-    out = torch.sum(diff, dim=1)
-    return out
+    # out = torch.sum(diff, dim=1)
+    # return out
+    out = torch.pow(diff + eps, p).sum(dim=1)
+    return torch.pow(out, 1. / p)
 
 
-def variant_triplet_margin_loss(anchor, positive, negative, margin=1.0, swap=False):
+def variant_triplet_margin_loss(anchor, positive, negative, margin=4.0, swap=False):
 
     assert anchor.size() == positive.size(), "Input sizes between positive and negative must be equal."
     assert anchor.size() == negative.size(), "Input sizes between anchor and negative must be equal."
@@ -30,12 +32,10 @@ def variant_triplet_margin_loss(anchor, positive, negative, margin=1.0, swap=Fal
     assert margin > 0.0, 'Margin should be positive value.'
     # d_p = variant_pairwise_distance(anchor, positive)
     # d_n = variant_pairwise_distance(anchor, negative)
-    p_dist = nn.PairwiseDistance(2)
-    d_p = p_dist(anchor, positive)
-    d_n = p_dist(anchor, negative)
+    d_p = pairwise_distance(anchor, positive)
+    d_n = pairwise_distance(anchor, negative)
     if swap:
-        # d_s = variant_pairwise_distance(positive, negative)
-        d_s = p_dist(positive, negative)
+        d_s = pairwise_distance(positive, negative)
         d_n = torch.min(d_n, d_s)
 
     dist_soft = torch.log(1 + torch.exp(margin + d_p - d_n))
