@@ -267,13 +267,13 @@ def main():
     model_name = 'resnet50'
     original_model = models.resnet50(pretrained=True)
     num_ftrs = original_model.fc.in_features
-    new_model = nn.Sequential(*list(original_model.children())[:-1])
+    # new_model = nn.Sequential(*list(original_model.children())[:-1])
     
-    """new_model = original_model
+    new_model = original_model
     new_model.fc = nn.Linear(num_ftrs, 1024)
     new_model.add_module('bn0', nn.BatchNorm1d(1024))
     new_model.add_module('relu0', nn.ReLU(inplace=True))
-    new_model.add_module('fc2', nn.Linear(1024, 128))"""
+    new_model.add_module('fc2', nn.Linear(1024, 128))
     new_model = torch.nn.DataParallel(new_model)
     if args.cuda:
         new_model.cuda()
@@ -328,8 +328,8 @@ def use_trained_model():
 
 def exp_lr_scheduler(optimizer, epoch, init_lr=args.lr, lr_decay_epoch=10):
     """Decay learning rate by a factor of 0.1 every lr_decay_epoch epochs."""
-    # lr = init_lr * (0.1**(epoch // lr_decay_epoch))
-    lr = init_lr * (0.2**(epoch // lr_decay_epoch))
+    lr = init_lr * (0.5**(epoch // lr_decay_epoch))
+    # lr = init_lr * (0.2**(epoch // lr_decay_epoch))
     for param_group in optimizer.param_groups:
         param_group['lr'] = lr
 
