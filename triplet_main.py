@@ -23,6 +23,7 @@ import torch.optim as optim
 from torch.autograd import Variable
 from cuhk03_alexnet import AlexNet
 from utils import Logger, AverageMeter, accuracy, mkdir_p, savefig
+from function import *
 
 # Training settings
 parser = argparse.ArgumentParser(description='PyTorch CUHK03 Example')

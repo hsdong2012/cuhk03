@@ -11,6 +11,7 @@ import numpy as np
 import torch
 import scipy.misc
 import scipy.io as sio
+import itertools as it
 from torchvision import datasets, transforms
 from torchvision import models
 import torch.utils.data as data_utils
@@ -26,14 +27,14 @@ from function import *
 
 # Training settings
 parser = argparse.ArgumentParser(description='PyTorch CUHK03 Example')
-parser.add_argument('--train-batch-size', type=int, default=240, metavar='N',
+parser.add_argument('--train-batch-size', type=int, default=128, metavar='N',
                     help='input batch size for training (default: 160)')
 parser.add_argument('--test-batch-size', type=int, default=40, metavar='N',
                     help='input batch size for testing (default: 10)')
 parser.add_argument('--epochs', type=int, default=20, metavar='N',
                     help='number of epochs to train (default: 60)')
 # lr=0.1 for resnet, 0.01 for alexnet and vgg
-parser.add_argument('--lr', type=float, default=0.001, metavar='LR',
+parser.add_argument('--lr', type=float, default=0.0004, metavar='LR',
                     help='learning rate (default: 0.1)')
 parser.add_argument('--momentum', type=float, default=0.005, metavar='M',
                     help='SGD momentum (default: 0.5)')
@@ -77,19 +78,20 @@ def _get_triplet_data():
                 class_num -= 1
             if len1 >= 3 and len2 >= 3:
                 for k in range(3):
-                    temp_id.append(i)
                     temp_a.append(np.array(ff['a']['train'][str(i)][k]))
                     temp_b.append(np.array(ff['b']['train'][str(i)][k]))
                 a_temp.append(temp_a)
                 b_temp.append(temp_b)
+                temp_id.append(i)
                 temp_a = []
                 temp_b = []
 
-
-        imageset_a = np.array(a_temp)
-        imageset_b = np.array(b_temp)
-        a_trans = imageset_a.transpose(0, 1, 4, 2, 3)
-        b_trans = imageset_b.transpose(0, 1, 4, 2, 3)
+	person_id = np.array(temp_id)
+        camera_a = np.array(a_temp)
+        camera_b = np.array(b_temp)
+        a_trans = camera_a.transpose(0, 1, 4, 2, 3)
+        b_trans = camera_b.transpose(0, 1, 4, 2, 3)
+	id_tensor = torch.from_numpy(person_id)
         a_tensor = torch.from_numpy(a_trans)
         b_tensor = torch.from_numpy(b_trans)
         # print(a_tensor.size())
@@ -99,7 +101,15 @@ def _get_triplet_data():
             for k in range(3):
                 a_tensor[j][k] = transform(a_tensor[j][k])
                 b_tensor[j][k] = transform(b_tensor[j][k])
+	
+	
+	triplet_dataset = torch.stack((a_tensor, b_tensor), 1) #class_num*2*3*(3*224*224
+	triplet_label = id_tensor
+        return triplet_dataset, triplet_label
+	
+	
 
+	'''	
         # pair_num = 200*199
         pair_num = 40*class_num
         # pair_num = 20000
@@ -144,9 +154,9 @@ def _get_triplet_data():
 
         triplet_dataset = triplet_temp
         triplet_label = triplet_id_temp
-
+	
         return triplet_dataset, triplet_label
-
+	'''
 
 # get validation dataset of five camera pairs
 def _get_data(val_or_test):
@@ -175,11 +185,83 @@ def train_model(train_loader, model, optimizer, epoch):
     losses = AverageMeter()
 
     for batch_idx, (inputs, targets) in enumerate(train_loader):
+	
+	size0 = inputs.size(0)
+        camera_pair = torch.split(inputs, 1, 1)
+        camera_a_3 = torch.squeeze(camera_pair[0]) # batch_size *3 * (3*224*224)
+        camera_b_3 = torch.squeeze(camera_pair[1])
+	camera_a_pair = torch.split(camera_a_3, 1, 1)
+	camera_b_pair = torch.split(camera_b_3, 1, 1)
+	camera_a = torch.squeeze(camera_a_pair[0]) # batch_size * (3*224*224)
+	camera_b = torch.squeeze(camera_b_pair[0])
+	camera_a,camera_b = Variable(camera_a).float(), Variable(camera_b).float()
+	if args.cuda:
+	    camera_a, camera_b = camera_a.cuda(), camera_b.cuda()
+	outputs_a = model(camera_a)
+	outputs_b = model(camera_b)
+	actual_size = size0*(size0-1)
+        outputs1 = torch.FloatTensor(actual_size, outputs_a.size(1)).zero_()
+        outputs2 = torch.FloatTensor(actual_size, outputs_a.size(1)).zero_()
+        outputs3 = torch.FloatTensor(actual_size, outputs_a.size(1)).zero_()
+	outputs1, outputs2, outputs3 = Variable(outputs1).cuda(), Variable(outputs2).cuda(), Variable(outputs3).cuda()
+	k = 0
+	for p0 in range(size0):
+	    range_no_p0 = range_except_k(p0, size0)
+	    for p1 in range_no_p0:
+		outputs1[k] = outputs_a[p0]
+		outputs2[k] = outputs_b[p0]
+		outputs3[k] = outputs_b[p1]
+		k += 1
+		
 
+
+	"""
+	size0 = inputs.size(0)
+        camera_pair = torch.split(inputs, 1, 1)
+        camera_a = torch.squeeze(camera_pair[0]) # batch_size * 3 *(3*224*224)
+        camera_b = torch.squeeze(camera_pair[1])
+	actual_size = size0*2*2*(size0-1)*2
+        anchor_temp = torch.FloatTensor(actual_size, camera_a.size(2), camera_a.size(3), camera_a.size(4)).zero_()
+        positive_temp = torch.FloatTensor(actual_size, camera_a.size(2), camera_a.size(3), camera_a.size(4)).zero_()
+        negative_temp = torch.FloatTensor(actual_size, camera_a.size(2), camera_a.size(3), camera_a.size(4)).zero_()
+	k = 0
+	for p0 in range(size0):
+	    range_no_p0 = range_except_k(p0, size0)
+	    for i0 in range(2):
+		for i1 in range(2):
+		    for p1 in range_no_p0:
+			for i2 in range(2):
+			    anchor_temp[k] = camera_a[p0][i0]
+			    positive_temp[k] = camera_b[p0][i1]
+			    negative_temp[k] = camera_b[p1][i2]
+			    k += 1
+	anchor = anchor_temp
+	positive = positive_temp
+	negative = negative_temp
+	if 0:		
+	    a_np = anchor.numpy()		
+	    p_np = positive.numpy()		
+	    n_np = negative.numpy()		
+	    a_img = a_np.transpose(0, 2, 3, 1)		
+	    p_img = p_np.transpose(0, 2, 3, 1)		
+	    n_img = n_np.transpose(0, 2, 3, 1)
+	    file_path = 'batch_all_normalize_image/'		
+	    directory = os.path.dirname(file_path)		
+	    if not os.path.exists(directory):		
+	        os.makedirs(directory)		
+	    for k in it.chain(xrange(40,41), xrange(60, 61), xrange(80,81)):
+		scipy.misc.imsave(directory+'/anchor'+'_'+str(k)+'.png', a_img[k])
+		scipy.misc.imsave(directory+'/positive'+'_'+str(k)+'.png', p_img[k])
+		scipy.misc.imsave(directory+'/negative'+'_'+str(k)+'.png', n_img[k])
+	    sys.exit('exit')
+	"""
+
+	'''	
         triplet_pair = torch.split(inputs, 1, 1)
         anchor = torch.squeeze(triplet_pair[0])
         positive = torch.squeeze(triplet_pair[1])
         negative = torch.squeeze(triplet_pair[2])
+		
 
         inputs_cat = Variable(torch.cat((anchor, positive, negative), 0)).cuda()
         outputs_cat = model(inputs_cat)
@@ -187,12 +269,17 @@ def train_model(train_loader, model, optimizer, epoch):
         outputs1 = outputs_split[0]
         outputs2 = outputs_split[1]
         outputs3 = outputs_split[2]
-        
+        '''
+
         outputs1, outputs2, outputs3 = torch.squeeze(outputs1), torch.squeeze(outputs2), torch.squeeze(outputs3)
 
         # compute loss
-        loss = variant_triplet_margin_loss(outputs1, outputs2, outputs3, margin=3.0)
-        losses.update(loss.data[0], anchor.size(0))
+        criterion = nn.TripletMarginLoss(margin=4.0, p=2)
+        if args.cuda:
+            criterion = nn.TripletMarginLoss(margin=4.0, p=2).cuda()
+	loss = criterion(outputs1, outputs2, outputs3) 
+        # loss = variant_triplet_margin_loss(outputs1, outputs2, outputs3, margin=3.0)
+        losses.update(loss.data[0], inputs.size(0))
 
         # compute gradient and do SGD step
         optimizer.zero_grad()
@@ -268,12 +355,21 @@ def main():
     original_model = models.resnet50(pretrained=True)
     num_ftrs = original_model.fc.in_features
     # new_model = nn.Sequential(*list(original_model.children())[:-1])
-    
+
     new_model = original_model
     new_model.fc = nn.Linear(num_ftrs, 1024)
     new_model.add_module('bn0', nn.BatchNorm1d(1024))
     new_model.add_module('relu0', nn.ReLU(inplace=True))
     new_model.add_module('fc2', nn.Linear(1024, 128))
+    import torch.nn.init as init
+    init.kaiming_normal(new_model.fc.weight, mode='fan_out')
+    init.constant(new_model.fc.bias, 0)
+    init.constant(new_model.bn0.weight, 1)
+    init.constant(new_model.bn0.bias, 0)
+    init.normal(new_model.fc2.weight, std=0.001)
+    init.constant(new_model.fc2.bias, 0)
+
+
     new_model = torch.nn.DataParallel(new_model)
     if args.cuda:
         new_model.cuda()
