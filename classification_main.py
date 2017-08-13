@@ -21,7 +21,6 @@ import torch.nn.functional as F
 import torch.backends.cudnn as cudnn
 import torch.optim as optim
 from torch.autograd import Variable
-from cuhk03_alexnet import AlexNet
 from utils import Logger, AverageMeter, accuracy, mkdir_p, savefig
 
 # Training settings
@@ -57,7 +56,7 @@ if args.cuda:
 
 #get train dataset of five camera pairs
 def _get_train_data(train, group):
-    with h5py.File('triplet-cuhk-03.h5', 'r') as ff:
+    with h5py.File('labeled-detected-cuhk-03.h5', 'r') as ff:
         class_num = len(ff[group][train].keys())
         print("class number: ", class_num)
         temp = []
@@ -89,7 +88,7 @@ def _get_train_data(train, group):
 
 # get validation dataset of five camera pairs
 def _get_data(val_or_test):
-    with h5py.File('triplet-cuhk-03.h5','r') as ff:
+    with h5py.File('labeled-detected-cuhk-03.h5','r') as ff:
 	num1 = 80
 	num2 = 80
 	a = np.array([ff['a'][val_or_test][str(i)][1] for i in range(num1)])
@@ -174,15 +173,6 @@ def cmc(model, val_or_test='test'):
             camera1 = camera1.float()
             camera2 = camera2.float()
             camera_batch1 = camera_batch1.float()
-	    if 0:
-		probe = camera1.numpy()
-		probe_img = probe.transpose(0, 2, 3, 1)
-		file_path = 'probe_with_its_top5/'
-		directory = os.path.dirname(file_path)
-		if not os.path.exists(directory):
-		    os.makedirs(directory)
-		for k in range(6):
-		    scipy.misc.imsave(directory+'/probe'+str(k)+'.png', probe_img[k])
 
             if args.cuda:
                 camera1, camera_batch1, camera2 = camera1.cuda(), camera_batch1.cuda(), camera2.cuda()
@@ -243,16 +233,6 @@ def main():
         model.fc = nn.Linear(num_ftrs, class_num)
         model = torch.nn.DataParallel(model)
 	# print(model)
-    if 0:
-        model = models.resnet18(pretrained=True)
-        num_ftrs = model.fc.in_features
-        model.fc = nn.Linear(num_ftrs, class_num)
-        model = torch.nn.DataParallel(model)
-	# print(model)
-    if 0:
-        model = models.alexnet(pretrained=True)
-        model.classifier._modules['6'] = nn.Linear(4096, class_num)
-        model.features = torch.nn.DataParallel(model.features)
        
 
     if args.cuda:
@@ -278,20 +258,7 @@ def main():
 
     if 1:
         model = nn.Sequential(*list(model.module.children())[:-1])
-	# print(model)
-        # model = torch.nn.DataParallel(model)
-    	torch.save(model, 'resnet50_trained.pth')
-    if 0:
-        model = nn.Sequential(*list(model.module.children())[:-1])
-	# print(model)
-        # model = torch.nn.DataParallel(model)
-    	torch.save(model, 'resnet_trained.pth')
-    if 0:
-        new_classifier = nn.Sequential(*list(model.classifier.children())[:-1])
-        model.classifier = new_classifier
-        # model.features = torch.nn.DataParallel(model.features)
-    	torch.save(model, 'alexnet_trained.pth')
-
+    	torch.save(model, 'log_classification/resnet50_trained.pth')
 
     score_array = cmc(model)
     print(score_array)
@@ -302,12 +269,8 @@ def main():
 def use_trained_model():
 
     if 1:
-    	model = torch.load('resnet50_trained.pth')
+    	model = torch.load('log_classification/resnet50_trained.pth')
         model = torch.nn.DataParallel(model)
-    if 0:
-    	model = torch.load('resnet_trained.pth')
-    if 0:
-    	model = torch.load('alexnet_trained.pth')
     
     if args.cuda:
 	model.cuda() 

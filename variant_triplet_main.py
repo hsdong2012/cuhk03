@@ -23,18 +23,19 @@ import torch.backends.cudnn as cudnn
 import torch.optim as optim
 from torch.autograd import Variable
 from utils import Logger, AverageMeter, accuracy, mkdir_p, savefig
-from function import *
+from TripletLoss import *
 
 # Training settings
 parser = argparse.ArgumentParser(description='PyTorch CUHK03 Example')
-parser.add_argument('--train-batch-size', type=int, default=128, metavar='N',
+# 64 for batch_hard, 4 for batch_all(4 GPU)
+parser.add_argument('--train-batch-size', type=int, default=64, metavar='N',
                     help='input batch size for training (default: 160)')
 parser.add_argument('--test-batch-size', type=int, default=40, metavar='N',
                     help='input batch size for testing (default: 10)')
 parser.add_argument('--epochs', type=int, default=20, metavar='N',
                     help='number of epochs to train (default: 60)')
-# lr=0.1 for resnet, 0.01 for alexnet and vgg
-parser.add_argument('--lr', type=float, default=0.0004, metavar='LR',
+# lr=0.1 for SGD, 0.0003 for Adam
+parser.add_argument('--lr', type=float, default=0.0003, metavar='LR',
                     help='learning rate (default: 0.1)')
 parser.add_argument('--momentum', type=float, default=0.005, metavar='M',
                     help='SGD momentum (default: 0.5)')
@@ -47,8 +48,8 @@ parser.add_argument('--seed', type=int, default=1, metavar='S',
 parser.add_argument('--log-interval', type=int, default=2, metavar='N',
                     help='how many batches to wait before logging training status')
 # Checkpoints
-parser.add_argument('-c', '--checkpoint', default='variant_triplet_main_checkpoint', type=str, metavar='PATH',
-                    help='path to save checkpoint (default: cuhk03_checkpoint)')
+parser.add_argument('-c', '--checkpoint',default='log_variant_triplet', type=str, metavar='PATH',
+                    help='path to save checkpoint (default: checkpoint)')
 
 args = parser.parse_args()
 args.cuda = not args.no_cuda and torch.cuda.is_available()
@@ -57,12 +58,13 @@ if args.cuda:
     torch.cuda.manual_seed(args.seed)
     cudnn.benchmark = True
 
+if not os.path.isdir(args.checkpoint):
+    mkdir_p(args.checkpoint)
 
-# get triplet dataset
 def range_except_k(n, end, start = 0):
     return range(start, n) + range(n+1, end)
 
-
+# get triplet dataset
 def _get_triplet_data():
     with h5py.File('cuhk-03.h5', 'r') as ff:
         class_num = len(ff['a']['train'].keys())
@@ -94,7 +96,6 @@ def _get_triplet_data():
 	id_tensor = torch.from_numpy(person_id)
         a_tensor = torch.from_numpy(a_trans)
         b_tensor = torch.from_numpy(b_trans)
-        # print(a_tensor.size())
 
         transform = transforms.Normalize(mean=[0.367, 0.362, 0.357], std=[0.244, 0.247, 0.249])
         for j in range(class_num):
@@ -103,62 +104,13 @@ def _get_triplet_data():
                 b_tensor[j][k] = transform(b_tensor[j][k])
 	
 	
-	triplet_dataset = torch.stack((a_tensor, b_tensor), 1) #class_num*2*3*(3*224*224
+	triplet_dataset = torch.stack((a_tensor, b_tensor), 1) #class_num*2*3*(3*224*224)
 	triplet_label = id_tensor
+
         return triplet_dataset, triplet_label
 	
 	
 
-	'''	
-        # pair_num = 200*199
-        pair_num = 40*class_num
-        # pair_num = 20000
-
-        triplet_temp = torch.FloatTensor(pair_num, 3, a_tensor.size(2), a_tensor.size(3), a_tensor.size(4)).zero_()
-        triplet_id_temp = torch.LongTensor(pair_num, 3).zero_()
-	
-	"""	
-        i = 0
-        for k in range(200):
-            range_no_k = range_except_k(k, 200)
-            for k1 in range_no_k:
-                j0 = random.randint(0, 2)
-                j1 = random.randint(0, 2)
-                j2 = random.randint(0, 2)
-                triplet_temp[i][0] = a_tensor[k][0]
-                triplet_id_temp[i][0] = k
-                triplet_temp[i][1] = b_tensor[k][0]
-                triplet_id_temp[i][1] = k
-                triplet_temp[i][2] = b_tensor[k1][0]
-                triplet_id_temp[i][2] = k1
-                i += 1
-	"""
-	
-	
-        i = 0
-        for j in range(40):
-            for k in range(class_num):
-                range_no_k = range_except_k(k, class_num)
-                k1 = random.choice(range_no_k)
-                j0 = random.randint(0, 2)
-                j1 = random.randint(0, 2)
-                j2 = random.randint(0, 2)
-                triplet_temp[i][0] = a_tensor[k][j0]
-                triplet_id_temp[i][0] = k
-                triplet_temp[i][1] = b_tensor[k][j1]
-                triplet_id_temp[i][1] = k
-                triplet_temp[i][2] = b_tensor[k1][j2]
-                triplet_id_temp[i][2] = k1
-                i += 1
-	
-
-        triplet_dataset = triplet_temp
-        triplet_label = triplet_id_temp
-	
-        return triplet_dataset, triplet_label
-	'''
-
-# get validation dataset of five camera pairs
 def _get_data(val_or_test):
     with h5py.File('cuhk-03.h5','r') as ff:
     	num1 = 80  # camera1, probe
@@ -179,106 +131,51 @@ def _get_data(val_or_test):
         return (camere1, camere2)
 
 
+def split_cameras(inputs):
+    # inputs: batch_size * 2 * 3 * (3*224*224)
+    camera_pair = torch.split(inputs, 1, 1)
+    camera_a_3 = torch.squeeze(camera_pair[0]) # batch_size *3 * (3*224*224)
+    camera_b_3 = torch.squeeze(camera_pair[1])
+    camera_a_pair = torch.split(camera_a_3, 1, 1)
+    camera_b_pair = torch.split(camera_b_3, 1, 1)
+    camera_a_1 = torch.squeeze(camera_a_pair[0]) # batch_size * (3*224*224)
+    camera_b_1 = torch.squeeze(camera_b_pair[0])
+    camera_a_2 = torch.squeeze(camera_a_pair[1]) 
+    camera_b_2 = torch.squeeze(camera_b_pair[1])
+    camera_a_3 = torch.squeeze(camera_a_pair[2])
+    camera_b_3 = torch.squeeze(camera_b_pair[2]) 
+    camera_a = torch.cat((camera_a_1, camera_a_2, camera_a_3), 0)
+    camera_b = torch.cat((camera_b_1, camera_b_2, camera_b_3), 0)
+    # camera_a: (batch_size*3) * (3*224*224)
+    return camera_a, camera_b
+
+
 def train_model(train_loader, model, optimizer, epoch):
 
     model.train()
     losses = AverageMeter()
 
     for batch_idx, (inputs, targets) in enumerate(train_loader):
-	
-	size0 = inputs.size(0)
-        camera_pair = torch.split(inputs, 1, 1)
-        camera_a_3 = torch.squeeze(camera_pair[0]) # batch_size *3 * (3*224*224)
-        camera_b_3 = torch.squeeze(camera_pair[1])
-	camera_a_pair = torch.split(camera_a_3, 1, 1)
-	camera_b_pair = torch.split(camera_b_3, 1, 1)
-	camera_a = torch.squeeze(camera_a_pair[0]) # batch_size * (3*224*224)
-	camera_b = torch.squeeze(camera_b_pair[0])
+
+	print(inputs.size())	 # inputs: batch_size * 2 * 3 * (3*224*224)
+	num_person = inputs.size(0)
+	num_same = inputs.size(2)
+
+	camera_a, camera_b = split_cameras(inputs)
+
 	camera_a,camera_b = Variable(camera_a).float(), Variable(camera_b).float()
 	if args.cuda:
 	    camera_a, camera_b = camera_a.cuda(), camera_b.cuda()
+	print(camera_a.size())
+
 	outputs_a = model(camera_a)
 	outputs_b = model(camera_b)
-	actual_size = size0*(size0-1)
-        outputs1 = torch.FloatTensor(actual_size, outputs_a.size(1)).zero_()
-        outputs2 = torch.FloatTensor(actual_size, outputs_a.size(1)).zero_()
-        outputs3 = torch.FloatTensor(actual_size, outputs_a.size(1)).zero_()
-	outputs1, outputs2, outputs3 = Variable(outputs1).cuda(), Variable(outputs2).cuda(), Variable(outputs3).cuda()
-	k = 0
-	for p0 in range(size0):
-	    range_no_p0 = range_except_k(p0, size0)
-	    for p1 in range_no_p0:
-		outputs1[k] = outputs_a[p0]
-		outputs2[k] = outputs_b[p0]
-		outputs3[k] = outputs_b[p1]
-		k += 1
-		
-
-
-	"""
-	size0 = inputs.size(0)
-        camera_pair = torch.split(inputs, 1, 1)
-        camera_a = torch.squeeze(camera_pair[0]) # batch_size * 3 *(3*224*224)
-        camera_b = torch.squeeze(camera_pair[1])
-	actual_size = size0*2*2*(size0-1)*2
-        anchor_temp = torch.FloatTensor(actual_size, camera_a.size(2), camera_a.size(3), camera_a.size(4)).zero_()
-        positive_temp = torch.FloatTensor(actual_size, camera_a.size(2), camera_a.size(3), camera_a.size(4)).zero_()
-        negative_temp = torch.FloatTensor(actual_size, camera_a.size(2), camera_a.size(3), camera_a.size(4)).zero_()
-	k = 0
-	for p0 in range(size0):
-	    range_no_p0 = range_except_k(p0, size0)
-	    for i0 in range(2):
-		for i1 in range(2):
-		    for p1 in range_no_p0:
-			for i2 in range(2):
-			    anchor_temp[k] = camera_a[p0][i0]
-			    positive_temp[k] = camera_b[p0][i1]
-			    negative_temp[k] = camera_b[p1][i2]
-			    k += 1
-	anchor = anchor_temp
-	positive = positive_temp
-	negative = negative_temp
-	if 0:		
-	    a_np = anchor.numpy()		
-	    p_np = positive.numpy()		
-	    n_np = negative.numpy()		
-	    a_img = a_np.transpose(0, 2, 3, 1)		
-	    p_img = p_np.transpose(0, 2, 3, 1)		
-	    n_img = n_np.transpose(0, 2, 3, 1)
-	    file_path = 'batch_all_normalize_image/'		
-	    directory = os.path.dirname(file_path)		
-	    if not os.path.exists(directory):		
-	        os.makedirs(directory)		
-	    for k in it.chain(xrange(40,41), xrange(60, 61), xrange(80,81)):
-		scipy.misc.imsave(directory+'/anchor'+'_'+str(k)+'.png', a_img[k])
-		scipy.misc.imsave(directory+'/positive'+'_'+str(k)+'.png', p_img[k])
-		scipy.misc.imsave(directory+'/negative'+'_'+str(k)+'.png', n_img[k])
-	    sys.exit('exit')
-	"""
-
-	'''	
-        triplet_pair = torch.split(inputs, 1, 1)
-        anchor = torch.squeeze(triplet_pair[0])
-        positive = torch.squeeze(triplet_pair[1])
-        negative = torch.squeeze(triplet_pair[2])
-		
-
-        inputs_cat = Variable(torch.cat((anchor, positive, negative), 0)).cuda()
-        outputs_cat = model(inputs_cat)
-        outputs_split = torch.split(outputs_cat, anchor.size(0), 0)
-        outputs1 = outputs_split[0]
-        outputs2 = outputs_split[1]
-        outputs3 = outputs_split[2]
-        '''
-
-        outputs1, outputs2, outputs3 = torch.squeeze(outputs1), torch.squeeze(outputs2), torch.squeeze(outputs3)
-
-        # compute loss
-        criterion = nn.TripletMarginLoss(margin=4.0, p=2)
-        if args.cuda:
-            criterion = nn.TripletMarginLoss(margin=4.0, p=2).cuda()
-	loss = criterion(outputs1, outputs2, outputs3) 
-        # loss = variant_triplet_margin_loss(outputs1, outputs2, outputs3, margin=3.0)
+	outputs_a, outputs_b = torch.squeeze(outputs_a), torch.squeeze(outputs_b)
+	print(outputs_a.size())
+	# sys.exit('exit')
+	
+	# loss = batch_all_triplet_margin_loss(outputs_a, outputs_b, num_person, num_same)
+	loss = batch_hard_triplet_margin_loss(outputs_a, outputs_b, num_person, num_same)
         losses.update(loss.data[0], inputs.size(0))
 
         # compute gradient and do SGD step
@@ -354,27 +251,11 @@ def main():
     model_name = 'resnet50'
     original_model = models.resnet50(pretrained=True)
     num_ftrs = original_model.fc.in_features
-    # new_model = nn.Sequential(*list(original_model.children())[:-1])
-
-    new_model = original_model
-    new_model.fc = nn.Linear(num_ftrs, 1024)
-    new_model.add_module('bn0', nn.BatchNorm1d(1024))
-    new_model.add_module('relu0', nn.ReLU(inplace=True))
-    new_model.add_module('fc2', nn.Linear(1024, 128))
-    import torch.nn.init as init
-    init.kaiming_normal(new_model.fc.weight, mode='fan_out')
-    init.constant(new_model.fc.bias, 0)
-    init.constant(new_model.bn0.weight, 1)
-    init.constant(new_model.bn0.bias, 0)
-    init.normal(new_model.fc2.weight, std=0.001)
-    init.constant(new_model.fc2.bias, 0)
-
+    new_model = nn.Sequential(*list(original_model.children())[:-1])
 
     new_model = torch.nn.DataParallel(new_model)
     if args.cuda:
         new_model.cuda()
-    print(new_model)
-
 
     triplet_dataset, triplet_label = _get_triplet_data()
     print('train data  size: ', triplet_dataset.size())
@@ -385,15 +266,12 @@ def main():
     optimizer = optim.Adam(new_model.parameters(), lr=args.lr, betas=(0.9,0.999), eps=1e-08, weight_decay=args.weight_decay)
     # optimizer = optim.SGD(new_model.parameters(), lr=args.lr, momentum=args.momentum, weight_decay=args.weight_decay)
 
-    criterion = nn.TripletMarginLoss(margin=4.0, p=2)
-    if args.cuda:
-        criterion = nn.TripletMarginLoss(margin=4.0, p=2).cuda()
 
-    if not os.path.isdir(args.checkpoint):
-        mkdir_p(args.checkpoint)
     title = 'CUHK03-Dataset'
     date_time = get_datetime()
-    log_filename = 'log-triplet-'+str(triplet_dataset.size(0))+'-'+model_name+'-'+date_time+'.txt'
+    triplet_batch = ['bh', 'ba']
+    loss_margin = ['hm', 'sm']
+    log_filename = 'log-triplet-'+triplet_batch[0]+'-'+loss_margin[1]+'-'+model_name+'-'+date_time+'.txt'
     logger = Logger(os.path.join(args.checkpoint, log_filename), title=title)
     logger.set_names(['Learning Rate', 'Train Loss', 'Test Top1', 'Test Top5', 'Test Top10'])
 
@@ -409,12 +287,12 @@ def main():
     logger.close()
 
     # save model
-    # torch.save(new_model, 'variant_triplet_resnet50_trained.pth')
+    # torch.save(new_model, 'triplet_bh_soft_margin_resnet50.pth')
 
 
 def use_trained_model():
 
-    model = torch.load('variant_triplet_resnet50_trained.pth')
+    model = torch.load('triplet_bh_soft_margin_resnet50.pth')
 
     score_array = cmc(model)
     print(score_array)

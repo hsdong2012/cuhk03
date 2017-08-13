@@ -23,17 +23,18 @@ import torch.optim as optim
 from torch.autograd import Variable
 from cuhk03_alexnet import AlexNet
 from utils import Logger, AverageMeter, accuracy, mkdir_p, savefig
-from function import *
+
 
 # Training settings
 parser = argparse.ArgumentParser(description='PyTorch CUHK03 Example')
+# 240 for 8 GPU
 parser.add_argument('--train-batch-size', type=int, default=240, metavar='N',
                     help='input batch size for training (default: 160)')
 parser.add_argument('--test-batch-size', type=int, default=10, metavar='N',
                     help='input batch size for testing (default: 10)')
 parser.add_argument('--epochs', type=int, default=20, metavar='N',
                     help='number of epochs to train (default: 60)')
-# lr=0.1 for resnet, 0.01 for alexnet and vgg
+# lr=0.05 for resnet, 0.0003 for Adam
 parser.add_argument('--lr', type=float, default=0.05, metavar='LR',
                     help='learning rate (default: 0.01)')
 parser.add_argument('--momentum', type=float, default=0.005, metavar='M',
@@ -47,8 +48,8 @@ parser.add_argument('--seed', type=int, default=1, metavar='S',
 parser.add_argument('--log-interval', type=int, default=2, metavar='N',
                     help='how many batches to wait before logging training status')
 # Checkpoints
-parser.add_argument('-c', '--checkpoint', default='triplet_main_checkpoint', type=str, metavar='PATH',
-                    help='path to save checkpoint (default: cuhk03_checkpoint)')
+parser.add_argument('-c', '--checkpoint', default='log_triplet', type=str, metavar='PATH',
+                    help='path to save checkpoint (default: checkpoint)')
 
 args = parser.parse_args()
 args.cuda = not args.no_cuda and torch.cuda.is_available()
@@ -56,6 +57,8 @@ torch.manual_seed(args.seed)
 if args.cuda:
     torch.cuda.manual_seed(args.seed)
     cudnn.benchmark = True
+if not os.path.isdir(args.checkpoint):
+    mkdir_p(args.checkpoint)
 
 
 # get triplet dataset
@@ -182,14 +185,6 @@ def train_model(train_loader, model, criterion, optimizer, epoch):
         anchor = torch.squeeze(triplet_pair[0])
         positive = torch.squeeze(triplet_pair[1])
         negative = torch.squeeze(triplet_pair[2])
-
-	"""
-        if args.cuda:
-            anchor, positive, negative = anchor.cuda(), positive.cuda(), negative.cuda()
-        anchor, positive, negative = Variable(anchor), Variable(positive), Variable(negative)
-        outputs1, outputs2, outputs3 = model(anchor), model(positive), model(negative)
-	"""
-
         
         inputs_cat = Variable(torch.cat((anchor, positive, negative), 0)).cuda()
         outputs_cat = model(inputs_cat)
@@ -272,41 +267,6 @@ def cmc(model, val_or_test='test'):
 
 def main():
 
-    """
-    model_name = 'alexnet'
-    ori_model = models.alexnet(pretrained=True)
-    new_model = ori_model
-    new_classifier = nn.Sequential(*list(ori_model.classifier.children())[:-1])
-    new_model.classifier = new_classifier
-    new_model.features = torch.nn.DataParallel(new_model.features)
-    if args.cuda:
-	new_model.cuda()
-    """
-
-    """
-    model_name = 'alexnet'
-    ori_model = models.alexnet(pretrained=True)
-    # print(ori_model.features._modules['3'].weight)
-    class AlexNetNoClassifier(nn.Module):
-            def __init__(self):
-                super(AlexNetNoClassifier, self).__init__()
-                self.features = nn.Sequential(
-                    *list(ori_model.features.children())[:]
-                )
-            def forward(self, x):
-                x = self.features(x)
-                x = x.view(x.size(0), 256 * 6 * 6)
-                return x
-
-    new_model = AlexNetNoClassifier()
-    # print(new_model)
-    # print(new_model.features._modules['3'].weight)
-    new_model.features = torch.nn.DataParallel(new_model.features)
-    if args.cuda:
-        new_model.cuda()
-    """
-
-
     model_name = 'resnet50'
     original_model = models.resnet50(pretrained=True)
     new_model = nn.Sequential(*list(original_model.children())[:-1])
@@ -314,16 +274,6 @@ def main():
     if args.cuda:
         new_model.cuda()
     # print(new_model)
-
-
-    """
-    model_name = 'resnet18'
-    original_model = models.resnet18(pretrained=True)
-    new_model = nn.Sequential(*list(original_model.children())[:-1])
-    new_model = torch.nn.DataParallel(new_model)
-    if args.cuda:
-        new_model.cuda()
-    """
 
     triplet_dataset, triplet_label = _get_triplet_data()
     print('train data  size: ', triplet_dataset.size())
@@ -338,8 +288,6 @@ def main():
     if args.cuda:
         criterion = nn.TripletMarginLoss(margin=4.0, p=2).cuda()
 
-    if not os.path.isdir(args.checkpoint):
-        mkdir_p(args.checkpoint)
     title = 'CUHK03-Dataset'
     date_time = get_datetime()
     log_filename = 'log-triplet-'+str(triplet_dataset.size(0))+'-'+model_name+'-'+date_time+'.txt'
@@ -359,15 +307,10 @@ def main():
 
     # Test
     # torch.save(new_model, 'triplet_resnet50_trained.pth')
-    # torch.save(new_model, 'triplet_resnet_trained.pth')
-    # torch.save(new_model, 'triplet_alexnet_trained.pth')
-
 
 def use_trained_model():
 
     model = torch.load('triplet_resnet50_trained.pth')
-    # model = torch.load('triplet_resnet_trained.pth')
-    # model = torch.load('triplet_alexnet_trained.pth')
 
     model = torch.nn.DataParallel(model)
     if args.cuda:
