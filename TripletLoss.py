@@ -10,7 +10,7 @@ from torch.autograd import Variable
 def range_except_k(n, end, start = 0):
     return range(start, n) + range(n+1, end)
 
-def batch_hard_triplet_margin_loss(camera_a, camera_b, P, K, margin=1.0):
+def batch_hard_triplet_margin_loss(camera_a, camera_b, P, K, margin=2.0):
     #camera_a with size (num_person P * num_same K)*num_class
     #camera_b with size (num_person P * num_same K)*num_class
     assert camera_a.size() == camera_b.size(), "Input sizes between camera_a and camera_b must be equal."
@@ -41,10 +41,10 @@ def batch_hard_triplet_margin_loss(camera_a, camera_b, P, K, margin=1.0):
     dist_ap_max = torch.cat(dist_ap_max)
     dist_an_min = torch.cat(dist_an_min)
 
-    # dist_hinge = torch.clamp(margin + dist_ap_max - dist_an_min, min=0.0)
-    dist_soft = torch.log(1 + torch.exp(margin + dist_ap_max - dist_an_min))
-    # loss = torch.mean(dist_hinge)
-    loss = torch.mean(dist_soft)
+    dist_hinge = torch.clamp(margin + dist_ap_max - dist_an_min, min=0.0)
+    # dist_soft = torch.log(1 + torch.exp(margin + dist_ap_max - dist_an_min))
+    loss = torch.mean(dist_hinge)
+    # loss = torch.mean(dist_soft)
     return loss
 
 def batch_all_triplet_margin_loss(camera_a, camera_b, P, K, margin=1.0):
@@ -70,9 +70,10 @@ def batch_all_triplet_margin_loss(camera_a, camera_b, P, K, margin=1.0):
 
     d_p = pairwise_distance(anchor, positive)
     d_n = pairwise_distance(anchor, negative)
-    dist_hinge = torch.clamp(margin + d_p - d_n, min=0.0)
-    # dist_soft = torch.log(1 + torch.exp(margin + d_p - d_n))
-    loss = torch.mean(dist_hinge)
+    # dist_hinge = torch.clamp(margin + d_p - d_n, min=0.0)
+    dist_soft = torch.log(1 + torch.exp(margin + d_p - d_n))
+    # loss = torch.mean(dist_hinge)
+    loss = torch.mean(dist_soft)
     return loss
 
 
