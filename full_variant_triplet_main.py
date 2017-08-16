@@ -26,12 +26,12 @@ from torch.autograd import Variable
 from utils import Logger, AverageMeter, accuracy, mkdir_p, savefig
 from reid.utils.serialization import load_checkpoint, save_checkpoint
 from TripletLoss import batch_hard_triplet_margin_loss, batch_all_triplet_margin_loss
-from dataset import _get_triplet_data, _get_data
+from fulldataset import _get_triplet_data, _get_data
 
 # Training settings
 parser = argparse.ArgumentParser(description='PyTorch CUHK03 Example')
-# 64 for batch_hard, 4 for batch_all(4 GPU)
-parser.add_argument('--train-batch-size', type=int, default=64, metavar='N',
+# 32 for batch_hard, 4 for batch_all(4 GPU)
+parser.add_argument('--train-batch-size', type=int, default=32, metavar='N',
                     help='input batch size for training (default: 160)')
 parser.add_argument('--test-batch-size', type=int, default=60, metavar='N',
                     help='input batch size for testing (default: 10)')
@@ -51,7 +51,7 @@ parser.add_argument('--seed', type=int, default=1, metavar='S',
 parser.add_argument('--log-interval', type=int, default=2, metavar='N',
                     help='how many batches to wait before logging training status')
 # Checkpoints
-parser.add_argument('--logs-dir',default='log_variant_triplet', type=str, metavar='PATH',
+parser.add_argument('--logs-dir',default='log_full_variant_triplet', type=str, metavar='PATH',
                     help='path to save checkpoint (default: checkpoint)')
 parser.add_argument('--resume', type=str, default='', metavar='PATH')
 
@@ -71,9 +71,9 @@ def range_except_k(n, end, start = 0):
 
 
 def split_cameras(inputs):
-    # inputs: batch_size * 2(cameras) * 3(images of same person) * (3*224*224)
+    # inputs: batch_size * 2(cameras) * 6(images of same person) * (3*224*224)
     camera_pair = torch.split(inputs, 1, 1)
-    camera_a_3 = torch.squeeze(camera_pair[0]) # batch_size *3 * (3*224*224)
+    camera_a_3 = torch.squeeze(camera_pair[0]) # batch_size * 6 * (3*224*224)
     camera_b_3 = torch.squeeze(camera_pair[1])
     camera_a_pair = torch.split(camera_a_3, 1, 1)
     camera_b_pair = torch.split(camera_b_3, 1, 1)
@@ -83,9 +83,15 @@ def split_cameras(inputs):
     camera_b_2 = torch.squeeze(camera_b_pair[1])
     camera_a_3 = torch.squeeze(camera_a_pair[2])
     camera_b_3 = torch.squeeze(camera_b_pair[2]) 
-    camera_a = torch.cat((camera_a_1, camera_a_2, camera_a_3), 0)
-    camera_b = torch.cat((camera_b_1, camera_b_2, camera_b_3), 0)
-    # camera_a: (batch_size*3) * (3*224*224)
+    camera_a_4 = torch.squeeze(camera_a_pair[3])
+    camera_b_4 = torch.squeeze(camera_b_pair[3]) 
+    camera_a_5 = torch.squeeze(camera_a_pair[4])
+    camera_b_5 = torch.squeeze(camera_b_pair[4]) 
+    camera_a_6 = torch.squeeze(camera_a_pair[5])
+    camera_b_6 = torch.squeeze(camera_b_pair[5]) 
+    camera_a = torch.cat((camera_a_1, camera_a_2, camera_a_3, camera_a_4, camera_a_5, camera_a_6), 0)
+    camera_b = torch.cat((camera_b_1, camera_b_2, camera_b_3, camera_b_4, camera_b_5, camera_b_6), 0)
+    # camera_a: (batch_size*6) * (3*224*224)
     return camera_a, camera_b
 
 
@@ -280,5 +286,5 @@ def get_datetime():
     return date_time
 
 if __name__ == '__main__':
-    # main()
-    use_trained_model()
+    main()
+    # use_trained_model()

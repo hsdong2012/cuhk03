@@ -3,6 +3,7 @@ import argparse
 import h5py
 import sys
 import os
+import os.path as osp
 import time
 import datetime
 import shutil
@@ -21,8 +22,8 @@ import torch.nn.functional as F
 import torch.backends.cudnn as cudnn
 import torch.optim as optim
 from torch.autograd import Variable
-from cuhk03_alexnet import AlexNet
 from utils import Logger, AverageMeter, accuracy, mkdir_p, savefig
+from reid.utils.serialization import load_checkpoint, save_checkpoint
 
 
 # Training settings
@@ -32,7 +33,7 @@ parser.add_argument('--train-batch-size', type=int, default=240, metavar='N',
                     help='input batch size for training (default: 160)')
 parser.add_argument('--test-batch-size', type=int, default=10, metavar='N',
                     help='input batch size for testing (default: 10)')
-parser.add_argument('--epochs', type=int, default=20, metavar='N',
+parser.add_argument('--epochs', type=int, default=40, metavar='N',
                     help='number of epochs to train (default: 60)')
 # lr=0.05 for resnet, 0.0003 for Adam
 parser.add_argument('--lr', type=float, default=0.05, metavar='LR',
@@ -48,7 +49,7 @@ parser.add_argument('--seed', type=int, default=1, metavar='S',
 parser.add_argument('--log-interval', type=int, default=2, metavar='N',
                     help='how many batches to wait before logging training status')
 # Checkpoints
-parser.add_argument('-c', '--checkpoint', default='log_triplet', type=str, metavar='PATH',
+parser.add_argument('--logs-dir', default='log_triplet', type=str, metavar='PATH',
                     help='path to save checkpoint (default: checkpoint)')
 
 args = parser.parse_args()
@@ -57,8 +58,8 @@ torch.manual_seed(args.seed)
 if args.cuda:
     torch.cuda.manual_seed(args.seed)
     cudnn.benchmark = True
-if not os.path.isdir(args.checkpoint):
-    mkdir_p(args.checkpoint)
+if not os.path.isdir(args.logs_dir):
+    mkdir_p(args.logs_dir)
 
 
 # get triplet dataset
@@ -150,8 +151,8 @@ def _get_triplet_data():
 # get validation dataset of five camera pairs
 def _get_data(val_or_test):
     with h5py.File('cuhk-03.h5','r') as ff:
-    	num1 = 80  # camera1, probe
-        num2 = 80  # camera2, gallery, 100 >= num2 >= num1
+    	num1 = 100  # camera1, probe
+        num2 = 100  # camera2, gallery, 100 >= num2 >= num1
     	a = np.array([ff['a'][val_or_test][str(i)][1] for i in range(num1)])
     	b = np.array([ff['b'][val_or_test][str(i)][1] for i in range(num2)])
     	a_trans = a.transpose(0, 3, 1, 2)
@@ -219,8 +220,8 @@ def cmc(model, val_or_test='test'):
     a,b = _get_data(val_or_test)
     # camera1 as probe, camera2 as gallery
     def _cmc_curve(model, camera1, camera2, rank_max=20):
-        num1 = 80  # camera1, probe
-        num2 = 80  # camera2, gallery, 100 >= num2 >= num1
+        num1 = 100  # camera1, probe
+        num2 = 100  # camera2, gallery, 100 >= num2 >= num1
         rank = []
         score = []
         camera_batch1 = camera2
@@ -267,6 +268,7 @@ def cmc(model, val_or_test='test'):
 
 def main():
 
+    best_top1 = 0
     model_name = 'resnet50'
     original_model = models.resnet50(pretrained=True)
     new_model = nn.Sequential(*list(original_model.children())[:-1])
@@ -291,7 +293,7 @@ def main():
     title = 'CUHK03-Dataset'
     date_time = get_datetime()
     log_filename = 'log-triplet-'+str(triplet_dataset.size(0))+'-'+model_name+'-'+date_time+'.txt'
-    logger = Logger(os.path.join(args.checkpoint, log_filename), title=title)
+    logger = Logger(os.path.join(args.logs_dir, log_filename), title=title)
     logger.set_names(['Learning Rate', 'Train Loss', 'Test Top1', 'Test Top5', 'Test Top10'])
 
     # Train
@@ -302,24 +304,34 @@ def main():
         loss = train_model(train_loader, new_model, criterion, optimizer, epoch)
         score_array = cmc(new_model)
         logger.append([lr, loss, score_array[0], score_array[4], score_array[9]])
+	top1 = score_array[0]
+	is_best = top1 > best_top1
+        best_top1 = max(top1, best_top1)
+        save_checkpoint({
+            'state_dict': new_model.module.state_dict(),
+            'epoch': epoch,
+            'best_top1': best_top1,
+        }, is_best, fpath=osp.join(args.logs_dir, 'checkpoint.pth.tar'))	
 
     logger.close()
 
-    # Test
-    # torch.save(new_model, 'triplet_resnet50_trained.pth')
+    print('Test with best model:')
+    checkpoint = load_checkpoint(osp.join(args.logs_dir, 'model_best.pth.tar'))
+    new_model.module.load_state_dict(checkpoint['state_dict'])
+    score_array = cmc(new_model)
 
 def use_trained_model():
-
-    model = torch.load('triplet_resnet50_trained.pth')
-
-    model = torch.nn.DataParallel(model)
+    
+    original_model = models.resnet50(pretrained=True)
+    new_model = nn.Sequential(*list(original_model.children())[:-1])
+    new_model = torch.nn.DataParallel(new_model)
     if args.cuda:
-        model.cuda()
-    score_array = cmc(model)
-    print(score_array)
+        new_model.cuda()
 
-    print('Top1(accuracy) : {:.3f}\t''Top5(accuracy) : {:.3f}'.format(
-        score_array[0], score_array[4]))
+    print('Test with best model:')
+    checkpoint = load_checkpoint(osp.join(args.logs_dir, 'model_best.pth.tar'))
+    new_model.module.load_state_dict(checkpoint['state_dict'])
+    score_array = cmc(new_model)
 
 
 def exp_lr_scheduler(optimizer, epoch, init_lr=args.lr, lr_decay_epoch=10):

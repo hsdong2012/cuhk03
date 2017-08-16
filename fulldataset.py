@@ -12,7 +12,7 @@ from reid.utils.data import transforms as T
 
 # get triplet dataset
 def _get_triplet_data():
-    with h5py.File('cuhk-03.h5', 'r') as ff:
+    with h5py.File('bck/labeled-detected-cuhk-03.h5', 'r') as ff:
         class_num = len(ff['a']['train'].keys())
         temp_a = []
         temp_b = []
@@ -22,10 +22,10 @@ def _get_triplet_data():
         for i in range(class_num):
             len1 = len(ff['a']['train'][str(i)])
             len2 = len(ff['b']['train'][str(i)])
-            if len1 < 3 or len2 < 3:
+            if len1 < 6 or len2 < 6:
                 class_num -= 1
-            if len1 >= 3 and len2 >= 3:
-                for k in range(3):
+            if len1 >= 6 and len2 >= 6:
+                for k in range(6):
                     temp_a.append(np.array(ff['a']['train'][str(i)][k]))
                     temp_b.append(np.array(ff['b']['train'][str(i)][k]))
                 a_temp.append(temp_a)
@@ -46,7 +46,7 @@ def _get_triplet_data():
         normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],std=[0.229, 0.224, 0.225])
         # normalize = transforms.Normalize(mean=[0.367, 0.362, 0.357], std=[0.244, 0.247, 0.249])
         for j in range(class_num):
-            for k in range(3):
+            for k in range(6):
                 a_tensor[j][k] = normalize(a_tensor[j][k])
                 b_tensor[j][k] = normalize(b_tensor[j][k])
 	

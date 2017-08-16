@@ -14,7 +14,6 @@ import scipy.misc
 import scipy.io as sio
 import itertools as it
 from torchvision import datasets, transforms
-from torchvision import models
 import torch.utils.data as data_utils
 
 import torch.nn as nn
@@ -25,6 +24,7 @@ import torch.optim as optim
 from torch.autograd import Variable
 from utils import Logger, AverageMeter, accuracy, mkdir_p, savefig
 from reid.utils.serialization import load_checkpoint, save_checkpoint
+from reid import models
 from TripletLoss import batch_hard_triplet_margin_loss, batch_all_triplet_margin_loss
 from dataset import _get_triplet_data, _get_data
 
@@ -33,7 +33,7 @@ parser = argparse.ArgumentParser(description='PyTorch CUHK03 Example')
 # 64 for batch_hard, 4 for batch_all(4 GPU)
 parser.add_argument('--train-batch-size', type=int, default=64, metavar='N',
                     help='input batch size for training (default: 160)')
-parser.add_argument('--test-batch-size', type=int, default=60, metavar='N',
+parser.add_argument('--test-batch-size', type=int, default=40, metavar='N',
                     help='input batch size for testing (default: 10)')
 parser.add_argument('--epochs', type=int, default=40, metavar='N',
                     help='number of epochs to train (default: 60)')
@@ -51,9 +51,13 @@ parser.add_argument('--seed', type=int, default=1, metavar='S',
 parser.add_argument('--log-interval', type=int, default=2, metavar='N',
                     help='how many batches to wait before logging training status')
 # Checkpoints
-parser.add_argument('--logs-dir',default='log_variant_triplet', type=str, metavar='PATH',
+parser.add_argument('--logs-dir',default='log_resnet_new', type=str, metavar='PATH',
                     help='path to save checkpoint (default: checkpoint)')
-parser.add_argument('--resume', type=str, default='', metavar='PATH')
+# model
+parser.add_argument('-a', '--arch', type=str, default='resnet50',
+                    choices=models.names())
+parser.add_argument('--features', type=int, default=128)
+parser.add_argument('--dropout', type=float, default=0)
 
 
 args = parser.parse_args()
@@ -181,23 +185,13 @@ def cmc(model, val_or_test='test'):
 
 def main():
 
-    start_epoch = 1
-    best_top1 = 0
-    model_name = 'resnet50'
+    model_name = 'resnet50_new'
+    model = models.create(args.arch, num_features=1024,
+                          dropout=args.dropout, num_classes=args.features)
 
-    original_model = models.resnet50(pretrained=True)
-    new_model = nn.Sequential(*list(original_model.children())[:-1])
-    if args.resume:
-        checkpoint = load_checkpoint(osp.join(args.logs_dir, args.resume))
-        new_model.load_state_dict(checkpoint['state_dict'])
-        start_epoch = checkpoint['epoch']
-        best_top1 = checkpoint['best_top1']
-        print("=> Start epoch {}  best top1 {:.1%}"
-              .format(start_epoch, best_top1))
-
-    new_model = torch.nn.DataParallel(new_model)
+    model = torch.nn.DataParallel(model)
     if args.cuda:
-        new_model.cuda()
+        model.cuda()
 
     triplet_dataset, triplet_label = _get_triplet_data()
     print('train data  size: ', triplet_dataset.size())
@@ -205,7 +199,7 @@ def main():
     train_data = data_utils.TensorDataset(triplet_dataset, triplet_label)
     train_loader = data_utils.DataLoader(train_data, batch_size=args.train_batch_size, shuffle=True)
 
-    optimizer = optim.Adam(new_model.parameters(), lr=args.lr, betas=(0.9,0.999), eps=1e-08, weight_decay=args.weight_decay)
+    optimizer = optim.Adam(model.parameters(), lr=args.lr, betas=(0.9,0.999), eps=1e-08, weight_decay=args.weight_decay)
     # optimizer = optim.SGD(new_model.parameters(), lr=args.lr, momentum=args.momentum, weight_decay=args.weight_decay)
 
 
@@ -218,43 +212,44 @@ def main():
     logger.set_names(['Learning Rate', 'Train Loss', 'Test Top1', 'Test Top5', 'Test Top10'])
 
     # Train
-    for epoch in range(start_epoch, args.epochs + 1):
+    best_acc = 0  # best test accuracy
+    for epoch in range(1, args.epochs + 1):
         lr, optimizer = exp_lr_scheduler(optimizer, epoch)
         print('\nEpoch: [%d | %d] LR: %f' % (epoch, args.epochs, lr))
         print()
-        loss = train_model(train_loader, new_model, optimizer, epoch)
-    	score_array = cmc(new_model)
+        loss = train_model(train_loader, model, optimizer, epoch)
+    	score_array = cmc(model)
         logger.append([lr, loss, score_array[0], score_array[4], score_array[9]])
 	# save model
 	test_acc = score_array[0]
-        is_best = test_acc > best_top1
-        best_top1 = max(test_acc, best_top1)
+        is_best = test_acc > best_acc
+        best_acc = max(test_acc, best_acc)
 	save_checkpoint({
-            'state_dict': new_model.module.state_dict(),
+            'state_dict': model.module.state_dict(),
             'epoch': epoch,
-            'best_top1': best_top1,
+            'best_top1': best_acc,
         }, is_best, fpath=osp.join(args.logs_dir, 'checkpoint.pth.tar'))	
 
     logger.close()
     # Final test
     print('Test with best model:')
     checkpoint = load_checkpoint(osp.join(args.logs_dir, 'model_best.pth.tar'))
-    new_model.module.load_state_dict(checkpoint['state_dict'])
-    score_array = cmc(new_model)
+    model.module.load_state_dict(checkpoint['state_dict'])
+    score_array = cmc(model)
 
 
 def use_trained_model():
 
-    original_model = models.resnet50(pretrained=True)
-    new_model = nn.Sequential(*list(original_model.children())[:-1])
-    new_model = torch.nn.DataParallel(new_model)
+    model = models.create(args.arch, num_features=1024,
+                          dropout=args.dropout, num_classes=args.features)
+    model = torch.nn.DataParallel(model)
     if args.cuda:
-        new_model.cuda()
+        model.cuda()
 
     print('Test with best model:')
     checkpoint = load_checkpoint(osp.join(args.logs_dir, 'model_best.pth.tar'))
-    new_model.module.load_state_dict(checkpoint['state_dict'])
-    score_array = cmc(new_model)
+    model.module.load_state_dict(checkpoint['state_dict'])
+    score_array = cmc(model)
 
 
 def exp_lr_scheduler(optimizer, epoch, init_lr=args.lr, lr_decay_epoch=15):

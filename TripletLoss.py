@@ -1,6 +1,7 @@
 from __future__ import print_function
 import argparse
 import numpy as np
+import random
 import torch
 
 import torch.nn as nn
@@ -11,8 +12,8 @@ def range_except_k(n, end, start = 0):
     return range(start, n) + range(n+1, end)
 
 def batch_hard_triplet_margin_loss(camera_a, camera_b, P, K, margin=2.0):
-    #camera_a with size (num_person P * num_same K)*num_class
-    #camera_b with size (num_person P * num_same K)*num_class
+    #camera_a with size (num_person P * num_same K) * num_features
+    #camera_b with size (num_person P * num_same K) * num_features
     assert camera_a.size() == camera_b.size(), "Input sizes between camera_a and camera_b must be equal."
     assert camera_a.dim() == 2, "Inputd must be a 2D matrix."
     assert margin > 0.0, 'Margin should be positive value.'
@@ -48,8 +49,8 @@ def batch_hard_triplet_margin_loss(camera_a, camera_b, P, K, margin=2.0):
     return loss
 
 def batch_all_triplet_margin_loss(camera_a, camera_b, P, K, margin=1.0):
-    #camera_a with size (num_person P * num_same K)*num_class
-    #camera_b with size (num_person P * num_same K)*num_class
+    #camera_a with size (num_person P * num_same K) * num_features
+    #camera_b with size (num_person P * num_same K) * num_features
     assert camera_a.size() == camera_b.size(), "Input sizes between camera_a and camera_b must be equal."
     assert camera_a.dim() == 2, "Inputd must be a 2D matrix."
     assert margin > 0.0, 'Margin should be positive value.'
@@ -77,6 +78,37 @@ def batch_all_triplet_margin_loss(camera_a, camera_b, P, K, margin=1.0):
     return loss
 
 
+def batch_random_triplet_margin_loss(camera_a, camera_b, P, K, margin=1.0):
+    #camera_a with size (num_person P * num_same K) * num_features
+    #(person 1 to P), (person 1 to P), ... (person 1 to P), totally K
+    #camera_b with size (num_person P * num_same K) * num_features
+    assert camera_a.size() == camera_b.size(), "Input sizes between camera_a and camera_b must be equal."
+    assert camera_a.dim() == 2, "Inputd must be a 2D matrix."
+    assert margin > 0.0, 'Margin should be positive value.'
+
+    num_triplets = P * K
+    anchor = Variable(torch.FloatTensor(num_triplets, camera_a.size(1)).zero_()).cuda()
+    positive = Variable(torch.FloatTensor(num_triplets, camera_a.size(1)).zero_()).cuda()
+    negative = Variable(torch.FloatTensor(num_triplets, camera_a.size(1)).zero_()).cuda()
+    i = 0
+    for j in range(K):
+	for k in range(P):
+	    range_no_k = range_except_k(k, P)
+	    k1 = random.choice(range_no_k)
+	    anchor[i] = camera_a[P*j + k]
+	    positive[i] = camera_b[P*j + k]
+	    negative[i] = camera_b[P*j + k1]
+	    i += 1
+
+    d_p = pairwise_distance(anchor, positive)
+    d_n = pairwise_distance(anchor, negative)
+    dist_hinge = torch.clamp(margin + d_p - d_n, min=0.0)
+    # dist_soft = torch.log(1 + torch.exp(margin + d_p - d_n))
+    loss = torch.mean(dist_hinge)
+    # loss = torch.mean(dist_soft)
+    return loss
+
+
 def pairwise_distance(x1, x2, p=2, eps=1e-6):
 
     assert x1.size() == x2.size(), "Input sizes must be equal."
@@ -91,3 +123,4 @@ def non_squared_pairwise_distance(x1, x2):
     diff = torch.abs(x1 - x2)
     out = torch.sum(diff, dim=1)
     return out
+

@@ -89,8 +89,8 @@ def _get_train_data(train, group):
 # get validation dataset of five camera pairs
 def _get_data(val_or_test):
     with h5py.File('labeled-detected-cuhk-03.h5','r') as ff:
-	num1 = 80
-	num2 = 80
+	num1 = 100
+	num2 = 100
 	a = np.array([ff['a'][val_or_test][str(i)][1] for i in range(num1)])
 	b = np.array([ff['b'][val_or_test][str(i)][1] for i in range(num2)])
 	a_trans = a.transpose(0, 3, 1, 2)
@@ -165,8 +165,8 @@ def cmc(model, val_or_test='test'):
 
         # camera1 as probe, camera2 as gallery
         def _cmc_curve(model, camera1, camera2, rank_max=20):
-            num1 = 80  # camera1
-            num2 = 80  # camera2
+            num1 = 100  # camera1
+            num2 = 100  # camera2
             rank = []
             score = []
             camera_batch1 = camera2
@@ -279,8 +279,8 @@ def use_trained_model():
     score_array = cmc(model)
     print(score_array)
 
-    print('Top1(accuracy) : {:.3f}\t''Top5(accuracy) : {:.3f}'.format(
-        score_array[0], score_array[4]))
+    print('Top1(accuracy) : {:.3f}\t''Top5(accuracy) : {:.3f}\t''Top10(accuracy): {:.3f}'.format(
+        score_array[0], score_array[4], score_array[9]))
 
 
 def exp_lr_scheduler(optimizer, epoch, init_lr=args.lr, lr_decay_epoch=20):
