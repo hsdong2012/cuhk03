@@ -82,7 +82,7 @@ def _get_data(val_or_test):
 
 def new_get_triplet_data():
     height, width = 224, 224
-    with h5py.File('new-cuhk-03.h5', 'r') as ff:
+    with h5py.File('cuhk-03.h5', 'r') as ff:
         class_num = len(ff['a']['train'].keys())
         temp_a = []
         temp_b = []
@@ -111,7 +111,7 @@ def new_get_triplet_data():
         normalizer = T.Normalize(mean=[0.485, 0.456, 0.406],std=[0.229, 0.224, 0.225])
 	train_transformer = T.Compose([
 	    T.ToPILImage(),
-            T.RandomSizedRectCrop(height, width),
+            # T.RandomSizedRectCrop(height, width),
             # T.RandomHorizontalFlip(),
             T.ToTensor(),
             normalizer
@@ -135,7 +135,7 @@ def new_get_triplet_data():
 def new_get_data(val_or_test):
     
     height, width = 224, 224
-    with h5py.File('new-cuhk-03.h5','r') as ff:
+    with h5py.File('cuhk-03.h5','r') as ff:
     	num1 = 100  # camera1, probe
         num2 = 100  # camera2, gallery, 100 >= num2 >= num1
     	a = np.array([ff['a'][val_or_test][str(i)][0] for i in range(num1)], dtype=np.uint8)
@@ -144,7 +144,7 @@ def new_get_data(val_or_test):
         normalizer = T.Normalize(mean=[0.485, 0.456, 0.406],std=[0.229, 0.224, 0.225])
 	test_transformer = T.Compose([
 	    T.ToPILImage(),
-            T.RectScale(height, width),
+            # T.RectScale(height, width),
             T.ToTensor(),
             normalizer
 	])

@@ -75,21 +75,15 @@ def range_except_k(n, end, start = 0):
 
 
 def split_cameras(inputs):
-    # inputs: batch_size * 2(cameras) * 3(images of same person) * (3*224*224)
+    # inputs: batch_size * 2(cameras) * k(images of same person) * (3*224*224)
     camera_pair = torch.split(inputs, 1, 1)
-    camera_a_3 = torch.squeeze(camera_pair[0]) # batch_size *3 * (3*224*224)
-    camera_b_3 = torch.squeeze(camera_pair[1])
-    camera_a_pair = torch.split(camera_a_3, 1, 1)
-    camera_b_pair = torch.split(camera_b_3, 1, 1)
-    camera_a_1 = torch.squeeze(camera_a_pair[0]) # batch_size * (3*224*224)
-    camera_b_1 = torch.squeeze(camera_b_pair[0])
-    camera_a_2 = torch.squeeze(camera_a_pair[1]) 
-    camera_b_2 = torch.squeeze(camera_b_pair[1])
-    camera_a_3 = torch.squeeze(camera_a_pair[2])
-    camera_b_3 = torch.squeeze(camera_b_pair[2]) 
-    camera_a = torch.cat((camera_a_1, camera_a_2, camera_a_3), 0)
-    camera_b = torch.cat((camera_b_1, camera_b_2, camera_b_3), 0)
-    # camera_a: (batch_size*3) * (3*224*224)
+    camera_a_k = torch.squeeze(camera_pair[0]) # batch_size *k * (3*224*224)
+    camera_b_k = torch.squeeze(camera_pair[1])
+    camera_a_pair = torch.split(camera_a_k, 1, 1)
+    camera_b_pair = torch.split(camera_b_k, 1, 1)
+    camera_a = torch.squeeze(torch.cat(camera_a_pair, 0))
+    camera_b = torch.squeeze(torch.cat(camera_b_pair, 0))
+    # camera_a: (batch_size*k) * (3*224*224)
     return camera_a, camera_b
 
 

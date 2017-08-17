@@ -59,7 +59,7 @@ def _get_triplet_data():
 	
 
 def _get_data(val_or_test):
-    with h5py.File('cuhk-03.h5','r') as ff:
+    with h5py.File('bck/labeled-detected-cuhk-03.h5', 'r') as ff:
     	num1 = 100  # camera1, probe
         num2 = 100  # camera2, gallery, 100 >= num2 >= num1
     	a = np.array([ff['a'][val_or_test][str(i)][0] for i in range(num1)])
