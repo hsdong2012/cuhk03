@@ -123,11 +123,11 @@ def train_model(train_loader, model, optimizer, criterion, epoch):
 def cmc(model, val_or_test='test'):
 
     model.eval()
-    a,b = _get_data(val_or_test)
+    a,b = _get_data(val_or_test, num1=100, num2=100)
     # camera1 as probe, camera2 as gallery
     def _cmc_curve(model, camera1, camera2, rank_max=20):
-        num1 = 100  # camera1, probe
-        num2 = 100  # camera2, gallery, 100 >= num2 >= num1
+        num1 = camera1.size(0)  # camera1, probe
+        num2 = camera2.szie(0)  # camera2, gallery, 100 >= num2 >= num1
         rank = []
         score = []
         camera_batch1 = camera2

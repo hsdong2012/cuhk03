@@ -149,10 +149,10 @@ def _get_triplet_data():
 
 
 # get validation dataset of five camera pairs
-def _get_data(val_or_test):
+def _get_data(val_or_test, num1, num2):
     with h5py.File('cuhk-03.h5','r') as ff:
-    	num1 = 100  # camera1, probe
-        num2 = 100  # camera2, gallery, 100 >= num2 >= num1
+    	# num1 for camera1, probe
+        # num2 for camera2, gallery, 100 >= num2 >= num1
     	a = np.array([ff['a'][val_or_test][str(i)][1] for i in range(num1)])
     	b = np.array([ff['b'][val_or_test][str(i)][1] for i in range(num2)])
     	a_trans = a.transpose(0, 3, 1, 2)
@@ -217,11 +217,11 @@ def train_model(train_loader, model, criterion, optimizer, epoch):
 def cmc(model, val_or_test='test'):
 
     model.eval()
-    a,b = _get_data(val_or_test)
+    a,b = _get_data(val_or_test, num1=100, num2=100)
     # camera1 as probe, camera2 as gallery
     def _cmc_curve(model, camera1, camera2, rank_max=20):
-        num1 = 100  # camera1, probe
-        num2 = 100  # camera2, gallery, 100 >= num2 >= num1
+        num1 = camera1.size(0)  # camera1, probe
+        num2 = camera2.size(0)  # camera2, gallery, 100 >= num2 >= num1
         rank = []
         score = []
         camera_batch1 = camera2
