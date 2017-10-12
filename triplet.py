@@ -43,10 +43,10 @@ class TripletLoss(nn.Module):
         dist_ap_max = torch.cat(dist_ap_max)
         dist_an_min = torch.cat(dist_an_min)
 
-        dist_hinge = torch.clamp(self.margin + dist_ap_max - dist_an_min, min=0.0)
-        # dist_soft = torch.log(1 + torch.exp(self.margin + dist_ap_max - dist_an_min))
-        loss = torch.mean(dist_hinge)
-        # loss = torch.mean(dist_soft)
+        # dist_hinge = torch.clamp(self.margin + dist_ap_max - dist_an_min, min=0.0)
+        dist_soft = torch.log(1 + torch.exp(self.margin + dist_ap_max - dist_an_min))
+        # loss = torch.mean(dist_hinge)
+        loss = torch.mean(dist_soft)
         return loss
 
 

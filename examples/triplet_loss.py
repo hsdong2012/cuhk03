@@ -62,7 +62,8 @@ def get_data(name, split_id, data_dir, height, width, batch_size, num_instances,
 	gallery_cams_new.append(query_cams[new_idx])
 
     query_num = len(query_ids_unique)
-    query_test_num = 50  # 1 GPU
+    # query_test_num = 50  # 1 GPU
+    query_test_num = 100  # 2 GPU
     split_num = query_num//query_test_num
     test_set = []
     tmp = []
@@ -103,15 +104,21 @@ def get_data(name, split_id, data_dir, height, width, batch_size, num_instances,
                      transform=test_transformer),
         batch_size=batch_size, num_workers=workers,
         shuffle=False, pin_memory=True)
-
+        
     test_loader = DataLoader(
         Preprocessor(test_set, root=dataset.images_dir, 
 		    transform=test_transformer),
         batch_size=2*query_test_num, num_workers=workers,
         shuffle=False, pin_memory=True)
-
+    """
+    test_loader = DataLoader(
+        Preprocessor(list(set(dataset.query) | set(dataset.gallery)),
+                     root=dataset.images_dir, transform=test_transformer),
+        batch_size=batch_size, num_workers=workers,
+        shuffle=False, pin_memory=True)
+    """
     return dataset, num_classes, train_loader, val_loader, test_loader
-
+    
 
 def main(args):
     np.random.seed(args.seed)
@@ -185,7 +192,7 @@ def main(args):
         }, is_best, fpath=osp.join(args.logs_dir, 'checkpoint.pth.tar'))
 
         print('\n * Finished epoch {:3d}  top1: {:5.1%}  best: {:5.1%}{}\n'.
-              format(epoch, top1, best_top1, ' *' if is_best else ''))
+              format(epoch+1, top1, best_top1, ' *' if is_best else ''))
 
     logger.close()
     # Final test
@@ -193,7 +200,7 @@ def main(args):
     checkpoint = load_checkpoint(osp.join(args.logs_dir, 'model_best.pth.tar'))
     model.module.load_state_dict(checkpoint['state_dict'])
     top1, top5, top10 = test_model(test_loader, model)
-    # print('Top1(accuracy) : {:.3f}\t''Top5(accuracy) : {:.3f}\t''Top10(accuracy) : {:.3f}'.format(top1, top5, top10))
+
 
 def test_with_trained_model(args):
     # Create data loaders
@@ -205,8 +212,8 @@ def test_with_trained_model(args):
                                   (256, 128)
     dataset, num_classes, train_loader, val_loader, test_loader = \
         get_data(args.dataset, args.split, args.data_dir, args.height,
-                 args.width, args.batch_size, args.num_instances, args.workers,
-                 args.combine_trainval)
+                 args.width, args.batch_size, args.num_instances, args.workers, args.combine_trainval)
+
     model = models.create(args.arch, num_features=1024,
                           dropout=args.dropout, num_classes=args.features)
 
@@ -215,6 +222,38 @@ def test_with_trained_model(args):
     checkpoint = load_checkpoint(osp.join(args.logs_dir, 'model_best.pth.tar'))
     model.module.load_state_dict(checkpoint['state_dict'])
     top1, top5, top10 = test_model(test_loader, model)
+
+def test_with_open_reid(args):
+    # Create data loaders
+    assert args.num_instances > 1, "num_instances should be greater than 1"
+    assert args.batch_size % args.num_instances == 0, \
+        'num_instances should divide batch_size'
+    if args.height is None or args.width is None:
+        args.height, args.width = (144, 56) if args.arch == 'inception' else \
+                                  (256, 128)
+    dataset, num_classes, train_loader, val_loader, test_loader = \
+        get_data(args.dataset, args.split, args.data_dir, args.height,
+                 args.width, args.batch_size, args.num_instances, args.workers,
+                 args.combine_trainval)
+    # Create model
+    model = models.create(args.arch, num_features=1024,
+                          dropout=args.dropout, num_classes=args.features)
+
+    model = nn.DataParallel(model).cuda()
+    print('Test with best model:')
+    # checkpoint = load_checkpoint(osp.join(args.logs_dir, 'checkpoint.pth.tar'))
+    checkpoint = load_checkpoint(osp.join(args.logs_dir, 'model_best.pth.tar'))
+    model.module.load_state_dict(checkpoint['state_dict'])
+    # Distance metric
+    metric = DistanceMetric(algorithm=args.dist_metric)
+    # Evaluator
+    evaluator = Evaluator(model)
+    metric.train(model, train_loader)
+    print("Validation:")
+    evaluator.evaluate(val_loader, dataset.val, dataset.val, metric)
+    print("Test:")
+    evaluator.evaluate(test_loader, dataset.query, dataset.gallery, metric)
+
 
 def _reorder(imgs, pids, P, K):
     new_imgs = torch.FloatTensor(imgs.size(0), imgs.size(1), imgs.size(2), imgs.size(3))
@@ -253,10 +292,10 @@ def train_model(train_loader, model, optimizer, criterion, epoch):
         loss.backward()
         optimizer.step()
 
-        if batch_idx % 2 == 0:
+        if (batch_idx+1) % 2 == 0:
             print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.4f}'.format(
-                epoch, batch_idx * len(imgs), len(train_loader.dataset),
-                100. * batch_idx / len(train_loader), loss.data[0]))
+                epoch, (batch_idx+1), len(train_loader),
+                100. * (batch_idx+1) / len(train_loader), loss.data[0]))
             print()
 
     return losses.avg
@@ -379,5 +418,6 @@ if __name__ == '__main__':
                         default=osp.join(working_dir, 'logs'))
     args = parser.parse_args()
     args.cuda = torch.cuda.is_available()
-    # main(parser.parse_args())
+    # main(args)
     test_with_trained_model(args)
+    # test_with_open_reid(args)
